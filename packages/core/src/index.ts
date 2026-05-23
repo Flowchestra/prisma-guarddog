@@ -24,6 +24,9 @@ export type { AppRoleSpec, AppRolesDefinition } from './app-roles.js'
 export { defineResources } from './resources.js'
 export type { ResourceParentRef, ResourceSpec, ResourceTreeDefinition } from './resources.js'
 
+export { defineResourceGrants } from './resource-grants.js'
+export type { ResourceGrantsDefinition, ResourceGrantsSource } from './resource-grants.js'
+
 export { Guarddog, ModelBuilder, PolicyBuilder } from './guarddog.js'
 export type { GuarddogConfig } from './guarddog.js'
 

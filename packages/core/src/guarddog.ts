@@ -48,6 +48,7 @@ import type { ClaimsDefinition, ClaimsShape, InferClaims } from './claims.js'
 import type { DbRolesDefinition } from './db-roles.js'
 import { PolymorphicBuilder } from './polymorphic.js'
 import { FluentExpr, PredicateBuilder } from './predicate.js'
+import type { ResourceGrantsDefinition } from './resource-grants.js'
 import type { ResourceTreeDefinition } from './resources.js'
 
 export interface GuarddogConfig<
@@ -55,11 +56,18 @@ export interface GuarddogConfig<
   TDbRoles extends string,
   TAppRoles extends string,
   TResources extends string,
+  TActions extends string = string,
 > {
   readonly claims: ClaimsDefinition<TClaimsShape>
   readonly dbRoles: DbRolesDefinition<TDbRoles>
   readonly appRoles: AppRolesDefinition<TAppRoles>
   readonly resources: ResourceTreeDefinition<TResources>
+  /**
+   * Optional resource-grants layer (layer 3). Required if any policy uses
+   * `p.hasGrant(action, col)`. Omit for projects using only dbRoles +
+   * appRoles + per-resource jsonb permissions.
+   */
+  readonly resourceGrants?: ResourceGrantsDefinition<TActions>
 }
 
 type PredicateFn<TClaims> = (p: PredicateBuilder<TClaims>) => FluentExpr
@@ -69,14 +77,15 @@ export class Guarddog<
   TDbRoles extends string = string,
   TAppRoles extends string = string,
   TResources extends string = string,
+  TActions extends string = string,
 > {
-  readonly config: GuarddogConfig<TClaimsShape, TDbRoles, TAppRoles, TResources>
+  readonly config: GuarddogConfig<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions>
   private readonly _modelBuilders = new Map<string, ModelBuilder<TClaimsShape, TDbRoles>>()
   private readonly _policies = new Map<string, PolicyBuilder<TClaimsShape, TDbRoles>>()
   private readonly _noPolicies = new Map<string, NoPolicyAst>()
   private readonly _polymorphics = new Map<string, PolymorphicBuilder<TClaimsShape, TDbRoles>>()
 
-  constructor(config: GuarddogConfig<TClaimsShape, TDbRoles, TAppRoles, TResources>) {
+  constructor(config: GuarddogConfig<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions>) {
     this.config = config
   }
 
