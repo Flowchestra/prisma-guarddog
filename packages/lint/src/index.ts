@@ -1,13 +1,16 @@
 /**
  * `@prisma-guarddog/lint` — coverage check.
  *
- * Phase 1 surface (implementation pending):
- *   - Cross-references Prisma DMMF model list against guarddog registry
- *   - Fails if any model lacks `policy()`, `noPolicy()`, or `importedRawPolicy()`
- *   - Exposes both a programmatic API and a CLI subcommand surface
+ * `lintCoverage` cross-references a Guarddog instance against the consumer's
+ * Prisma model list and reports missing policies plus work-in-progress
+ * markers (todos and rawSql() uses).
  *
- * Catches "I added a Prisma model and forgot to write a policy" — which is the
- * exact class of bug RLS can't help with if the model has no policy at all.
+ * Catches the bug class RLS itself can't help with: a Prisma model with
+ * zero policies is silently accessible to whichever role last had a
+ * blanket GRANT. The CLI can fold this in as `guarddog check --lint` and
+ * editor extensions surface issues inline; both paths call the same
+ * pure-function core.
  */
 
-export {};
+export { lintCoverage } from './coverage.js'
+export type { LintInput, LintIssue, LintReport, LintSeverity } from './coverage.js'
