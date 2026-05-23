@@ -1,13 +1,21 @@
 /**
  * `@prisma-guarddog/testing-postgres` — RLS verification harness.
  *
- * Phase 1 surface (implementation pending):
- *   - `withDbRole(role, fn)` — SET LOCAL ROLE inside a transaction
- *   - `withClaims(claims, fn)` — SET LOCAL request.jwt.claims = '...'
- *   - `assertAllowed(promise)` / `assertDenied(promise)`
- *   - `assertVisibleRows(query, expected)` / `assertHiddenColumns(row, columns)`
+ * Real Postgres only (ADR-0013). Each scenario opens a transaction,
+ * installs a test identity via `SET LOCAL ROLE` + claims, runs assertion
+ * helpers, then `ROLLBACK`s — so tests are hermetic without external
+ * cleanup.
  *
- * Real Postgres only. No pg-mem / pglite shims accepted. See ADR-0013.
+ *   await withScenario(client, { role: 'app_user', claims: { tenantId: 'A' } }, async (db) => {
+ *     await assertAllowed(db.query('SELECT * FROM workbench WHERE tenant_id = $1', ['A']))
+ *     await assertDenied(db.query('INSERT INTO workbench (...) VALUES (...)'))
+ *   })
  */
 
-export {};
+export type { PgSessionClient } from './client.js'
+
+export { DEFAULT_CLAIMS_ACCESSOR, withScenario } from './session.js'
+export type { SessionOptions } from './session.js'
+
+export { assertAllowed, assertDenied, assertHiddenColumns, AssertionError, assertVisibleRows } from './asserts.js'
+export type { AssertDeniedOptions } from './asserts.js'
