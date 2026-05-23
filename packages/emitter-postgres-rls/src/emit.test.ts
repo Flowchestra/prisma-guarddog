@@ -185,11 +185,12 @@ describe('emitPolicy — predicate compilation in a real policy', () => {
       )
     const sql = emitPolicy(guard.getPolicies()[0]!, ctx)
     const createStmt = sql.find((s) => s.startsWith('CREATE POLICY workbench_app_user_select'))!
-    // Pieces in order: claim, equality, AND, hasRole helper.
+    // Pieces in order: claim extraction, equality, AND, scoped hasRole inline.
     expect(createStmt).toContain("'tenantId'")
     expect(createStmt).toContain('tenant_id')
     expect(createStmt).toContain(' AND ')
-    expect(createStmt).toContain("app.has_role_on('workspace.admin'")
+    expect(createStmt).toContain("'roleScopes' -> 'workspace.admin'")
+    expect(createStmt).not.toContain('app.has_role_on')
   })
 })
 
@@ -216,7 +217,8 @@ describe('emitPolymorphic — discriminator equality auto-prepended', () => {
 
     const wbCreate = sql.find((s) => s.startsWith('CREATE POLICY scope_target_workbench_app_user_select'))!
     expect(wbCreate).toContain("scope_target.target_type = 'Workbench'")
-    expect(wbCreate).toContain('app.has_role_on')
+    expect(wbCreate).toContain("'roleScopes' -> 'workbench.editor'")
+    expect(wbCreate).not.toContain('app.has_role_on')
   })
 
   it('qualifies columns inside polymorphic predicates', () => {

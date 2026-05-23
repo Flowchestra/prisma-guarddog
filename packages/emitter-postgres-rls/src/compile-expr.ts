@@ -136,23 +136,38 @@ function sqlBinop(op: BinaryOp): string {
 }
 
 /**
- * Default `hasRole` compilation strategy:
+ * Default `hasRole` compilation strategy. Self-contained — produces inline
+ * SQL that depends only on the session claims. No consumer-side helper
+ * function, no `app.*` schema dependency. The emitter's promise is "TS in,
+ * migration out"; requiring hand-written SQL helpers breaks that.
  *
- *   scope-less:  (current_setting('jwt.claims', true)::jsonb -> 'roles') ? '<role>'
- *   scoped:      app.has_role_on('<role>', <scopeCol>::uuid)
+ * Two forms:
  *
- * The scope-less form assumes `roles` is a jsonb array of strings in claims.
- * The scoped form delegates to a Postgres helper function the consumer
- * implements — guarddog does not assume a grants-table shape. Override
- * via `ExprCompileCtx.compileHasRole` for project-specific shapes (e.g.,
- * an FGA service or a different claim structure).
+ *   scope-less:
+ *     (current_setting('<accessor>', true)::jsonb -> 'roles') ? '<role>'
+ *
+ *     Assumes `roles` is a jsonb array of role strings in the session
+ *     claims. The `?` operator checks element existence.
+ *
+ *   scoped (with scopeColumnRef):
+ *     (current_setting('<accessor>', true)::jsonb -> 'roleScopes' -> '<role>')
+ *       ? <scopeColumnRef>::text
+ *
+ *     Assumes `roleScopes` is a jsonb object on the claims mapping each
+ *     role name to a jsonb array of scope IDs (typically resource UUIDs
+ *     stringified). The `?` checks whether the row's scope-column value
+ *     appears in that array.
+ *
+ * Both forms operate purely on the claim payload — no grants table, no
+ * helper function. Consumers whose claim shape differs (flat grants array,
+ * external FGA service, etc.) override via `ExprCompileCtx.compileHasRole`.
  */
 export const defaultCompileHasRole: HasRoleCompiler = (role, scopeColumnRef, ctx) => {
   const accessorLit = quoteString(ctx.claims.accessor)
-  const rolesArray = `(current_setting(${accessorLit}, true)::jsonb -> 'roles')`
-  const roleCheck = `(${rolesArray} ? ${quoteString(role)})`
-  if (scopeColumnRef === undefined) return roleCheck
-  return `app.has_role_on(${quoteString(role)}, ${scopeColumnRef}::uuid)`
+  if (scopeColumnRef === undefined) {
+    return `((current_setting(${accessorLit}, true)::jsonb -> 'roles') ? ${quoteString(role)})`
+  }
+  return `((current_setting(${accessorLit}, true)::jsonb -> 'roleScopes' -> ${quoteString(role)}) ? (${scopeColumnRef})::text)`
 }
 
 /**

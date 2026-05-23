@@ -131,16 +131,24 @@ describe('compileExpr — binops and logical', () => {
 })
 
 describe('compileExpr — hasRole (default strategy)', () => {
-  it('compiles scope-less hasRole via jsonb ? operator', () => {
+  it('compiles scope-less hasRole via jsonb ? operator on the roles claim', () => {
     expect(compileExpr(hasRole('workspace.admin'), baseCtx())).toBe(
       "((current_setting('request.jwt.claims', true)::jsonb -> 'roles') ? 'workspace.admin')"
     )
   })
 
-  it('compiles scoped hasRole via app.has_role_on() helper', () => {
+  it('compiles scoped hasRole inline against the roleScopes claim — no helper function dependency', () => {
     expect(compileExpr(hasRole('workspace.admin', 'workspace_id'), baseCtx({ qualifyColumns: true }))).toBe(
-      "app.has_role_on('workspace.admin', workbench.workspace_id::uuid)"
+      "((current_setting('request.jwt.claims', true)::jsonb -> 'roleScopes' -> 'workspace.admin') ? (workbench.workspace_id)::text)"
     )
+  })
+
+  it('emitted scoped hasRole never references app.has_role_on or any consumer helper', () => {
+    const sql = compileExpr(hasRole('workspace.admin', 'workspace_id'), baseCtx())
+    expect(sql).not.toContain('app.has_role_on')
+    expect(sql).not.toMatch(/\bapp\./)
+    // current_setting (built-in) is allowed; we're checking we don't add OUR own helpers.
+    expect(sql).toContain('current_setting')
   })
 
   it('honors an overridden compileHasRole', () => {
@@ -150,8 +158,8 @@ describe('compileExpr — hasRole (default strategy)', () => {
 
   it('default helpers compose with predicates', () => {
     const ctx = baseCtx({ qualifyColumns: true })
-    expect(defaultCompileHasRole('a', undefined, ctx)).toContain("'a'")
-    expect(defaultCompileHasRole('a', 'workbench.id', ctx)).toContain('app.has_role_on')
+    expect(defaultCompileHasRole('a', undefined, ctx)).toContain("? 'a'")
+    expect(defaultCompileHasRole('a', 'workbench.id', ctx)).toContain("'roleScopes' -> 'a'")
   })
 })
 
