@@ -1,14 +1,22 @@
 /**
- * `@prisma-guarddog/emitter-postgres-rls` — Postgres RLS DDL emitter.
+ * `@prisma-guarddog/emitter-postgres-rls` — pure AST -> SQL transformer.
  *
- * Phase 1 surface (implementation pending):
- *   - Pure AST -> string[] transformation
- *   - CREATE POLICY (via DROP IF EXISTS + CREATE; see ADR-0008)
- *   - ALTER TABLE ENABLE/FORCE ROW LEVEL SECURITY
- *   - Table-level REVOKE
+ * Public API:
+ *   - `emitPolicy(policy, ctx)`           PolicyAst       -> readonly string[]
+ *   - `emitPolymorphic(poly, ctx)`        PolymorphicAst  -> readonly string[]
+ *   - `compileExpr(expr, exprCtx)`        Expr            -> string (SQL fragment)
  *
- * No I/O. No DB connection. No filesystem access.
- * See ../../../docs/adr/0008-idempotent-ddl-emission.md.
+ * No I/O, no DB connection, no filesystem access. Emitted DDL is idempotent
+ * per ADR-0008 — every CREATE POLICY is preceded by DROP POLICY IF EXISTS,
+ * and ENABLE/FORCE RLS are natively idempotent. Consumers should still
+ * orchestrate per-table dedup of the ENABLE/FORCE prelude when bundling
+ * multiple policies (that's the `.emit()` lifecycle in core, landing later).
  */
 
-export {};
+export { compileExpr, defaultCompileHasRole, defaultCompileIsOwner } from './compile-expr.js'
+export type { ExprCompileCtx, HasRoleCompiler, IsOwnerCompiler } from './compile-expr.js'
+
+export { emitPolicy, emitPolymorphic } from './emit.js'
+export type { EmitContext } from './emit.js'
+
+export { defaultTableResolver, formatLiteral, policyName, quoteIdent, quoteString } from './identifiers.js'
