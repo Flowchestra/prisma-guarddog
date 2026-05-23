@@ -6,9 +6,11 @@
 
 ## Phases
 
-### Phase 1 — Foundations (in progress)
+### Phase 1 — Foundations (implementation complete; release prep in progress)
 
 Scope is **locked**. The exit criteria below are deliberately narrow; do not propose adding to Phase 1.
+
+**Status** (as of 2026-05-23): every Phase 1 deliverable has landed and 374 unit tests pass across the workspace. Remaining gates before tagging a release: opt-in real-Postgres E2E run, workspace `pnpm -r run build` verification, CI workflow, version planning. See the root README's "What's verified vs. what's not" section.
 
 #### Deliverables
 
