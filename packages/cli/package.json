@@ -47,7 +47,10 @@
     "@prisma-guarddog/emitter-postgres-column-privileges": "workspace:*",
     "@prisma-guarddog/importer-prisma": "workspace:*",
     "@prisma-guarddog/importer-postgres": "workspace:*",
-    "@prisma-guarddog/lint": "workspace:*"
+    "@prisma-guarddog/lint": "workspace:*",
+    "commander": "^13.0.0",
+    "jiti": "^2.5.0",
+    "picocolors": "^1.1.1"
   },
   "peerDependencies": {
     "@prisma/internals": ">=6.0.0",
@@ -55,6 +58,7 @@
   },
   "devDependencies": {
     "@prisma/internals": "^6.0.0",
+    "@types/node": "^22.10.0",
     "prisma": "^6.0.0"
   },
   "publishConfig": {

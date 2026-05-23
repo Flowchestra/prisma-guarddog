@@ -1,16 +1,17 @@
 /**
- * `prisma-guarddog` (CLI) — programmatic entrypoint.
+ * `prisma-guarddog` — CLI for the schema-driven policy compiler.
  *
- * The CLI is the user-facing orchestrator that ties core, emitters, and
- * importers together for filesystem I/O. The pure libraries do not touch the
- * filesystem; the CLI is where read/write happens.
- *
- * Phase 1 commands (implementation pending):
- *   - `guarddog emit`     — emit target DDL to stdout / dry-run check
- *   - `guarddog diff`     — diff target vs. forward-replayed sidecars
- *   - `guarddog migrate`  — write timestamped migration.sql + guarddog.json
- *                           sidecar into prisma/migrations/
- *   - `guarddog import`   — scaffold-mode importer from live Postgres
+ * Most consumers invoke the CLI via the `guarddog` / `prisma-guarddog` bin.
+ * The programmatic surface exported here is for tests, scripting, and
+ * editor integrations that need to reach the same routines without
+ * shelling out.
  */
 
-export {};
+export { discoverConfig, findConfigFile, loadConfigFile, resolveConfig } from './config.js'
+export type { GuarddogConfigFile, ResolveConfigOptions, ResolvedConfig } from './config.js'
+
+export { loadSchema, materializeLoadedSchema, SchemaLoadError, validateSchemaModule } from './load.js'
+export type { LoadedSchema } from './load.js'
+
+export { inspectGuard, runCheck } from './commands/check.js'
+export type { CheckOptions, CheckResult } from './commands/check.js'

@@ -74,10 +74,22 @@ importers:
       '@prisma-guarddog/lint':
         specifier: workspace:*
         version: link:../lint
+      commander:
+        specifier: ^13.0.0
+        version: 13.1.0
+      jiti:
+        specifier: ^2.5.0
+        version: 2.6.1
+      picocolors:
+        specifier: ^1.1.1
+        version: 1.1.1
     devDependencies:
       '@prisma/internals':
         specifier: ^6.0.0
         version: 6.19.3(typescript@5.9.3)
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.17
       prisma:
         specifier: ^6.0.0
         version: 6.19.3(typescript@5.9.3)
