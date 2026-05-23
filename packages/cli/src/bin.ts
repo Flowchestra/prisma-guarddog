@@ -15,6 +15,7 @@ import { Command } from 'commander'
 import pc from 'picocolors'
 
 import { runCheck } from './commands/check.js'
+import { runMigrate } from './commands/migrate.js'
 import { discoverConfig } from './config.js'
 
 async function main(): Promise<void> {
@@ -31,6 +32,17 @@ async function main(): Promise<void> {
     .action(async (opts: { cwd?: string }) => {
       const config = await discoverConfig(opts.cwd ?? process.cwd())
       const result = await runCheck({ config })
+      process.exit(result.ok ? 0 : 1)
+    })
+
+  program
+    .command('migrate')
+    .description('Diff the schema against the existing sidecars and write a new timestamped migration.')
+    .option('--cwd <path>', 'override the working directory used for config discovery')
+    .option('--slug <slug>', 'override the migration folder slug (default: guarddog)')
+    .action(async (opts: { cwd?: string; slug?: string }) => {
+      const config = await discoverConfig(opts.cwd ?? process.cwd())
+      const result = await runMigrate({ config, ...(opts.slug !== undefined && { slug: opts.slug }) })
       process.exit(result.ok ? 0 : 1)
     })
 

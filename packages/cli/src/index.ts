@@ -15,3 +15,12 @@ export type { LoadedSchema } from './load.js'
 
 export { inspectGuard, runCheck } from './commands/check.js'
 export type { CheckOptions, CheckResult } from './commands/check.js'
+
+export { planMigrate, runMigrate } from './commands/migrate.js'
+export type { MigrateOptions, MigratePlan, MigrateResult } from './commands/migrate.js'
+
+export { renderOps } from './render-ops.js'
+export type { RenderContext } from './render-ops.js'
+
+export { formatSidecar, readAllSidecarOps, replayMigrationsDir, SIDECAR_FILENAME, SIDECAR_VERSION } from './sidecar.js'
+export type { Sidecar } from './sidecar.js'
