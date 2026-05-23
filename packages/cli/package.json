@@ -8,7 +8,13 @@
     "url": "git+https://github.com/Flowchestra/prisma-guarddog.git",
     "directory": "packages/cli"
   },
-  "keywords": ["prisma", "postgres", "rls", "cli", "migrations"],
+  "keywords": [
+    "prisma",
+    "postgres",
+    "rls",
+    "cli",
+    "migrations"
+  ],
   "type": "module",
   "bin": {
     "guarddog": "./src/bin.ts",
@@ -22,7 +28,11 @@
       "import": "./src/index.ts"
     }
   },
-  "files": ["dist", "src", "README.md"],
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsdown",
     "dev": "tsdown --watch",
@@ -38,6 +48,14 @@
     "@prisma-guarddog/importer-prisma": "workspace:*",
     "@prisma-guarddog/importer-postgres": "workspace:*",
     "@prisma-guarddog/lint": "workspace:*"
+  },
+  "peerDependencies": {
+    "@prisma/internals": ">=6.0.0",
+    "prisma": ">=6.0.0"
+  },
+  "devDependencies": {
+    "@prisma/internals": "^6.0.0",
+    "prisma": "^6.0.0"
   },
   "publishConfig": {
     "access": "public",

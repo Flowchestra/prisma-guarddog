@@ -8,7 +8,13 @@
     "url": "git+https://github.com/Flowchestra/prisma-guarddog.git",
     "directory": "packages/importer-postgres"
   },
-  "keywords": ["postgres", "pg_policies", "rls", "importer", "scaffold"],
+  "keywords": [
+    "postgres",
+    "pg_policies",
+    "rls",
+    "importer",
+    "scaffold"
+  ],
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
@@ -18,7 +24,11 @@
       "import": "./src/index.ts"
     }
   },
-  "files": ["dist", "src", "README.md"],
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsdown",
     "dev": "tsdown --watch",
@@ -32,6 +42,10 @@
   },
   "peerDependencies": {
     "pg": ">=8.0.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.11.10",
+    "pg": "^8.13.1"
   },
   "publishConfig": {
     "access": "public",

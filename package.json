@@ -49,5 +49,12 @@
       "oxlint --fix"
     ],
     "*.{json,md,mdx,yaml,yml}": "prettier --write"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "prisma"
+    ]
   }
 }

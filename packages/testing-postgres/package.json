@@ -8,7 +8,12 @@
     "url": "git+https://github.com/Flowchestra/prisma-guarddog.git",
     "directory": "packages/testing-postgres"
   },
-  "keywords": ["postgres", "rls", "testing", "vitest"],
+  "keywords": [
+    "postgres",
+    "rls",
+    "testing",
+    "vitest"
+  ],
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
@@ -18,7 +23,11 @@
       "import": "./src/index.ts"
     }
   },
-  "files": ["dist", "src", "README.md"],
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsdown",
     "dev": "tsdown --watch",
@@ -31,7 +40,14 @@
     "@prisma-guarddog/core": "workspace:*"
   },
   "peerDependencies": {
+    "@prisma/client": ">=6.0.0",
     "pg": ">=8.0.0"
+  },
+  "devDependencies": {
+    "@prisma/client": "^6.0.0",
+    "@types/pg": "^8.11.10",
+    "pg": "^8.13.1",
+    "prisma": "^6.0.0"
   },
   "publishConfig": {
     "access": "public",
