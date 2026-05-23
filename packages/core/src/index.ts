@@ -27,6 +27,8 @@ export type { ResourceParentRef, ResourceSpec, ResourceTreeDefinition } from './
 export { Guarddog, ModelBuilder, PolicyBuilder } from './guarddog.js'
 export type { GuarddogConfig } from './guarddog.js'
 
+export { PolymorphicBuilder, PolymorphicTargetBuilder, PolymorphicTargetPolicyBuilder } from './polymorphic.js'
+
 export { col, FluentExpr, PredicateBuilder } from './predicate.js'
 
 export type {
@@ -39,6 +41,9 @@ export type {
   LiteralValue,
   NoPolicyAst,
   PolicyAst,
+  PolymorphicAst,
+  PolymorphicTargetAst,
+  PolymorphicTargetPolicyAst,
   SelectSpec,
   UpdateSpec,
   Verb,

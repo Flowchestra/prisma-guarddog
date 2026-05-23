@@ -38,6 +38,7 @@ import type {
   InsertSpec,
   NoPolicyAst,
   PolicyAst,
+  PolymorphicAst,
   SelectSpec,
   UpdateSpec,
   Verb,
@@ -45,6 +46,7 @@ import type {
 import type { BusinessRolesDefinition } from './business-roles.js'
 import type { ClaimsDefinition, ClaimsShape, InferClaims } from './claims.js'
 import type { DbRolesDefinition } from './db-roles.js'
+import { PolymorphicBuilder } from './polymorphic.js'
 import { FluentExpr, PredicateBuilder } from './predicate.js'
 import type { ResourceTreeDefinition } from './resources.js'
 
@@ -72,6 +74,7 @@ export class Guarddog<
   private readonly _modelBuilders = new Map<string, ModelBuilder<TClaimsShape, TDbRoles>>()
   private readonly _policies = new Map<string, PolicyBuilder<TClaimsShape, TDbRoles>>()
   private readonly _noPolicies = new Map<string, NoPolicyAst>()
+  private readonly _polymorphics = new Map<string, PolymorphicBuilder<TClaimsShape, TDbRoles>>()
 
   constructor(config: GuarddogConfig<TClaimsShape, TDbRoles, TBusinessRoles, TResources>) {
     this.config = config
@@ -106,6 +109,12 @@ export class Guarddog<
           'Remove the model() / policy() calls or remove the noPolicy() call.'
       )
     }
+    if (this._polymorphics.has(modelName)) {
+      throw new Error(
+        `[prisma-guarddog] Guarddog.noPolicy("${modelName}"): this model was previously declared as polymorphic(). ` +
+          'Remove the polymorphic() call or use a different model for noPolicy().'
+      )
+    }
     this._noPolicies.set(modelName, Object.freeze({ model: modelName, reason: opts.reason }))
     return this
   }
@@ -123,6 +132,12 @@ export class Guarddog<
       throw new Error(
         `[prisma-guarddog] Guarddog.model("${modelName}"): this model was previously declared as noPolicy(). ` +
           'Remove the noPolicy() call if you want to declare a policy.'
+      )
+    }
+    if (this._polymorphics.has(modelName)) {
+      throw new Error(
+        `[prisma-guarddog] Guarddog.model("${modelName}"): this model was previously declared as polymorphic(). ` +
+          'Use either .model() or .polymorphic() for a given Prisma model, not both.'
       )
     }
     let builder = this._modelBuilders.get(modelName)
@@ -189,6 +204,65 @@ export class Guarddog<
    */
   getNoPolicies(): readonly NoPolicyAst[] {
     return Object.freeze([...this._noPolicies.values()])
+  }
+
+  /**
+   * Begin authoring against a polymorphic model — one Prisma model whose
+   * rows fan out to multiple physical target models via a discriminator
+   * column. Repeated calls with the same `modelName` return the same
+   * `PolymorphicBuilder`. Mutually exclusive with `.model()` and
+   * `.noPolicy()` on the same name.
+   *
+   * See `./polymorphic.ts` for the per-target authoring API.
+   */
+  polymorphic(modelName: string, opts: { discriminator: string }): PolymorphicBuilder<TClaimsShape, TDbRoles> {
+    if (modelName.length === 0) {
+      throw new Error('[prisma-guarddog] Guarddog.polymorphic(): modelName must be a non-empty string.')
+    }
+    if (opts.discriminator.length === 0) {
+      throw new Error(
+        `[prisma-guarddog] Guarddog.polymorphic("${modelName}"): discriminator must be a non-empty string.`
+      )
+    }
+    if (this._modelBuilders.has(modelName)) {
+      throw new Error(
+        `[prisma-guarddog] Guarddog.polymorphic("${modelName}"): this model was previously declared via .model(). ` +
+          'Use either .model() or .polymorphic() for a given Prisma model, not both.'
+      )
+    }
+    if (this._noPolicies.has(modelName)) {
+      throw new Error(
+        `[prisma-guarddog] Guarddog.polymorphic("${modelName}"): this model was previously declared as noPolicy(). ` +
+          'Remove the noPolicy() call if you want to declare a polymorphic policy.'
+      )
+    }
+    const existing = this._polymorphics.get(modelName)
+    if (existing !== undefined) {
+      if (existing.discriminator !== opts.discriminator) {
+        throw new Error(
+          `[prisma-guarddog] Guarddog.polymorphic("${modelName}"): previously declared with ` +
+            `discriminator="${existing.discriminator}", now redeclared with discriminator="${opts.discriminator}". ` +
+            'Use a consistent discriminator across all calls.'
+        )
+      }
+      return existing
+    }
+    const builder = new PolymorphicBuilder<TClaimsShape, TDbRoles>(
+      this as unknown as { _buildPredicate(): PredicateBuilder<InferClaims<ClaimsDefinition<TClaimsShape>>> },
+      modelName,
+      opts.discriminator
+    )
+    this._polymorphics.set(modelName, builder)
+    return builder
+  }
+
+  /**
+   * Deeply-frozen snapshot of every polymorphic declaration. Emitter
+   * walks each target inside and produces a per-(target, dbRole, verb)
+   * Postgres policy with the discriminator equality auto-prepended.
+   */
+  getPolymorphics(): readonly PolymorphicAst[] {
+    return Object.freeze([...this._polymorphics.values()].map((b) => b._toAst()))
   }
 }
 

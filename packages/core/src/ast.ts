@@ -108,3 +108,43 @@ export interface NoPolicyAst {
   readonly model: string
   readonly reason: string
 }
+
+/**
+ * Polymorphic table — one Prisma model whose rows fan out to multiple
+ * physical target models via a discriminator column.
+ *
+ * Example: a `ScopeTarget` table with `targetType` ∈ {Workspace, Workbench,
+ * File} and `targetId` referencing the appropriate target row. The access
+ * rules typically differ per target type, so the policy author wants to
+ * declare them once per target without manually restating `targetType =
+ * 'X'` in every predicate.
+ *
+ * The emitter walks the target list and produces one Postgres `CREATE
+ * POLICY` per (target, verb, dbRole), automatically prepending the
+ * discriminator equality to each policy's `USING` / `WITH CHECK`.
+ */
+export interface PolymorphicAst {
+  readonly modelName: string
+  readonly table: string | undefined
+  readonly discriminator: string
+  readonly targets: ReadonlyArray<PolymorphicTargetAst>
+}
+
+export interface PolymorphicTargetAst {
+  readonly discriminatorValue: string
+  readonly targetModelName: string
+  readonly policies: ReadonlyArray<PolymorphicTargetPolicyAst>
+}
+
+/**
+ * Per-(target, dbRole) policy spec. Structurally identical to `PolicyAst`
+ * minus `model` and `table` (those live on the enclosing `PolymorphicAst`).
+ */
+export interface PolymorphicTargetPolicyAst {
+  readonly dbRole: string
+  readonly select: SelectSpec | undefined
+  readonly insert: InsertSpec | undefined
+  readonly update: UpdateSpec | undefined
+  readonly delete: DeleteSpec | undefined
+  readonly todos: ReadonlyArray<string>
+}
