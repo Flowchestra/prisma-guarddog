@@ -11,7 +11,8 @@
     "no-console": "warn",
     "prefer-const": "error",
     "no-var": "error",
-    "no-unused-vars": "warn"
+    "no-unused-vars": "warn",
+    "no-underscore-dangle": "off"
   },
   "ignorePatterns": ["**/node_modules/**", "**/dist/**", "**/build/**", "**/coverage/**", "**/.turbo/**", ".git/**"]
 }

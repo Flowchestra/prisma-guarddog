@@ -4,10 +4,12 @@
  * Phase 1 surface: type-safe declarative primitives that produce typed AST
  * values consumed by emitters, importers, and the CLI.
  *
- * Implementation in progress per docs/PLAN.md. The `Guarddog` constructor,
- * policy builders (`.model`, `.policy`, `.columnPrivileges`, `.polymorphic`,
- * `.noPolicy`, `.rawSql`), and the `.emit` / `.diff` / `.migrate` lifecycle
- * land in subsequent commits.
+ * The `Guarddog` class composes the four primitives ([[ADR-0003]]) into a
+ * policy registry. `.model().policy().{select,insert,update,delete}` author
+ * per-verb predicates with explicit USING / WITH CHECK separation per
+ * ADR-0005. `.columnPrivileges()`, `.polymorphic()`, `.noPolicy()`, and the
+ * `.emit / .diff / .migrate` lifecycle land in subsequent commits per
+ * docs/PLAN.md.
  */
 
 export { defineClaims } from './claims.js'
@@ -21,3 +23,20 @@ export type { BusinessRoleSpec, BusinessRolesDefinition } from './business-roles
 
 export { defineResources } from './resources.js'
 export type { ResourceParentRef, ResourceSpec, ResourceTreeDefinition } from './resources.js'
+
+export { Guarddog, ModelBuilder, PolicyBuilder } from './guarddog.js'
+export type { GuarddogConfig } from './guarddog.js'
+
+export { col, FluentExpr, PredicateBuilder } from './predicate.js'
+
+export type {
+  BinaryOp,
+  DeleteSpec,
+  Expr,
+  InsertSpec,
+  LiteralValue,
+  PolicyAst,
+  SelectSpec,
+  UpdateSpec,
+  Verb,
+} from './ast.js'
