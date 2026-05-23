@@ -1,13 +1,16 @@
 /**
- * `@prisma-guarddog/emitter-postgres-column-privileges` — column GRANT/REVOKE emitter.
+ * `@prisma-guarddog/emitter-postgres-column-privileges` — pure AST -> SQL
+ * transformer for Postgres column-level GRANT statements.
  *
- * Phase 1 surface (implementation pending):
- *   - Static role-based column privileges only (NOT row-conditional masking)
- *   - GRANT SELECT(col) / UPDATE(col) / INSERT(col) ON table TO role
- *   - REVOKE counterparts (natively idempotent)
+ * Per ADR-0004, this emitter handles only STATIC role-based column
+ * privileges. Row-conditional field masking (`.masks()` / `.projection()`)
+ * is Phase 2 and lives in a separate emitter package.
  *
- * Row-conditional field masking (`.masks()` / `.projection()`) is Phase 2 and
- * belongs in a separate emitter. See ADR-0004.
+ * No I/O, no DB connection, no filesystem access. Emitted GRANT
+ * statements are natively idempotent.
  */
 
-export {};
+export { emitColumnPrivileges } from './emit.js'
+export type { EmitContext } from './emit.js'
+
+export { defaultTableResolver, quoteIdent, resolveTableName } from './identifiers.js'
