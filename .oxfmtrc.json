@@ -1,0 +1,14 @@
+{
+  "semi": false,
+  "singleQuote": true,
+  "tabWidth": 2,
+  "trailingComma": "es5",
+  "printWidth": 120,
+  "sortImports": {
+    "newlinesBetween": true
+  },
+  "sortTailwindcss": {
+    "functions": ["cn", "clsx", "cva"]
+  },
+  "ignorePatterns": [".next/**", "node_modules/**", "dist/**", "build/**", "coverage/**", ".git/**", "pnpm-lock.yaml"]
+}

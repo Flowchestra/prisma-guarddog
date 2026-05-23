@@ -1,0 +1,35 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "next-dev",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["dev"],
+      "port": 3000
+    },
+    {
+      "name": "prisma-studio",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["db:studio"],
+      "port": 5555
+    },
+    {
+      "name": "storybook",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["storybook"],
+      "port": 6006
+    },
+    {
+      "name": "vitest-ui",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["test:ui"],
+      "port": 51204
+    },
+    {
+      "name": "stripe-listen",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["stripe:listen"],
+      "port": 0
+    }
+  ]
+}

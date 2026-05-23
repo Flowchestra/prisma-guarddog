@@ -1,0 +1,17 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn",
+    "perf": "warn"
+  },
+  "plugins": ["typescript", "unicorn", "import", "vitest", "oxc"],
+  "rules": {
+    "typescript/no-explicit-any": "warn",
+    "no-console": "warn",
+    "prefer-const": "error",
+    "no-var": "error",
+    "no-unused-vars": "warn"
+  },
+  "ignorePatterns": ["**/node_modules/**", "**/dist/**", "**/build/**", "**/coverage/**", "**/.turbo/**", ".git/**"]
+}

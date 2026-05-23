@@ -1,0 +1,13 @@
+version: v1.0.0
+ignore:
+  SNYK-JS-XLSX-6252523:
+    - '*':
+        reason: >-
+          False positive. We install xlsx from the authoritative SheetJS
+          distribution (https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz),
+          not the npm registry. The vulnerability was patched in 0.20.2+
+          via the CDN, per the advisory's own note. Snyk matches by
+          name@version and cannot distinguish sources.
+        expires: '2027-05-19T00:00:00.000Z'
+        created: '2026-05-19T00:00:00.000Z'
+patch: {}

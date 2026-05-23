@@ -1,0 +1,84 @@
+# builds
+.next/
+build/
+dist/
+out/
+build/
+
+# dependencies
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# misc
+.git/
+.gitignore
+.DS_Store
+*.log
+coverage/
+*.tsbuildinfo
+
+# config files
+.env
+.env.*
+
+# tasks
+tasks/
+scripts/
+
+# markdown files
+*.md
+*.mdx
+*.mdc
+
+# contentlayer
+.contentlayer
+public/
+docs/
+blog/
+
+# testing
+coverage/
+.nyc_output/
+junit.xml
+
+# IDE/Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Generated files
+*.min.js
+*.min.css
+storybook-static/
+.storybook/build/
+
+# Temporary files
+tmp/
+temp/
+
+# Cache directories
+.cache/
+.parcel-cache/
+
+# Ignore Supabase Edge Function script meant for Deno runtime
+scripts/supabase/functions/*
+
+# Ignore Next.js error page
+src/app/global-error.tsx
+
+# Add other files/directories to ignore below
