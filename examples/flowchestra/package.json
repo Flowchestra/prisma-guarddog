@@ -1,0 +1,25 @@
+{
+  "name": "example-flowchestra",
+  "version": "0.0.0",
+  "private": true,
+  "description": "End-to-end example: 5 representative Flowchestra-shape policies authored with @prisma-guarddog/preset-flowchestra.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "type-check": "tsgo --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "test:e2e": "GUARDDOG_E2E=1 vitest run"
+  },
+  "dependencies": {
+    "@prisma-guarddog/core": "workspace:*",
+    "@prisma-guarddog/lint": "workspace:*",
+    "@prisma-guarddog/preset-flowchestra": "workspace:*",
+    "@prisma-guarddog/testing-postgres": "workspace:*",
+    "prisma-guarddog": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "pg": "^8.13.1",
+    "@types/pg": "^8.11.10"
+  }
+}

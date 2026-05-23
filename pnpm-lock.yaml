@@ -54,6 +54,34 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.19.17)
 
+  examples/flowchestra:
+    dependencies:
+      '@prisma-guarddog/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@prisma-guarddog/lint':
+        specifier: workspace:*
+        version: link:../../packages/lint
+      '@prisma-guarddog/preset-flowchestra':
+        specifier: workspace:*
+        version: link:../../packages/preset-flowchestra
+      '@prisma-guarddog/testing-postgres':
+        specifier: workspace:*
+        version: link:../../packages/testing-postgres
+      prisma-guarddog:
+        specifier: workspace:*
+        version: link:../../packages/cli
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.17
+      '@types/pg':
+        specifier: ^8.11.10
+        version: 8.20.0
+      pg:
+        specifier: ^8.13.1
+        version: 8.20.0
+
   packages/cli:
     dependencies:
       '@prisma-guarddog/core':

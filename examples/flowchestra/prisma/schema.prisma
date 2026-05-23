@@ -1,0 +1,65 @@
+// Reference schema for the example-flowchestra package. Not consumed by
+// Prisma itself in this repo (no generator output, no database) — it's the
+// Prisma side of the contract the guarddog policies in src/guarddog.ts
+// are written against.
+//
+// Five models, three layers: tenant -> workspace -> workbench, plus File
+// (owned), ToolInvocation (system-written), and MigrationLedger (opted out
+// via noPolicy).
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Workspace {
+  id        String     @id @default(uuid()) @db.Uuid
+  tenantId  String     @db.Uuid
+  name      String
+  workbenches Workbench[]
+
+  @@index([tenantId])
+}
+
+model Workbench {
+  id          String     @id @default(uuid()) @db.Uuid
+  tenantId    String     @db.Uuid
+  workspaceId String     @db.Uuid
+  workspace   Workspace  @relation(fields: [workspaceId], references: [id])
+  name        String
+  files       File[]
+
+  @@index([tenantId])
+  @@index([workspaceId])
+}
+
+model File {
+  id               String    @id @default(uuid()) @db.Uuid
+  tenantId         String    @db.Uuid
+  workbenchId      String    @db.Uuid
+  workbench        Workbench @relation(fields: [workbenchId], references: [id])
+  ownerId          String    @db.Uuid
+  name             String
+  storageKey       String
+  embeddingPayload Json?
+
+  @@index([tenantId])
+  @@index([workbenchId])
+}
+
+model ToolInvocation {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tool     String
+
+  @@map("tool_invocation")
+}
+
+model MigrationLedger {
+  id   BigInt @id @default(autoincrement())
+  name String
+}
