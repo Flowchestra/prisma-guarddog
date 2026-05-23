@@ -4,7 +4,9 @@ Project-specific instructions for Claude Code sessions in this repo.
 
 ## What this repo is — and is NOT
 
-`prisma-guarddog` is a **TypeScript policy compiler and verification harness** for Prisma-backed Postgres applications. It emits Postgres RLS DDL, role grants, column privileges, sidecar migration metadata, and test scaffolds.
+`prisma-guarddog` is a **schema-driven policy compiler for Prisma-backed Postgres applications**. The user maintains a TypeScript schema file (conventionally `prisma/guarddog.ts`) adjacent to their `prisma/schema.prisma`. The CLI (or a Prisma generator hook) reads that schema and produces idempotent SQL migrations covering: roles, RLS policies, column privileges, and per-resource permission infrastructure.
+
+The mental model parallels Prisma's own: schema file in, autocomplete + linting via the TypeScript LSP, idempotent migrations out, applied through Prisma's standard migrate flow.
 
 It is **NOT**:
 
@@ -13,19 +15,27 @@ It is **NOT**:
 - A ZenStack clone
 - A generic FGA platform
 - A Go/Rust binary (see [ADR-0017](./docs/adr/0017-typescript-implementation.md))
+- A library you call imperatively (the `Guarddog` class is a runtime implementation detail, not the consumer surface — see [ADR-0018](./docs/adr/0018-schema-file-as-primary-interface.md))
 
 When the user discusses RLS, policy authoring, column-level visibility, polymorphic grants, or FGAC, frame against this package. Never propose ZenStack, Yates, runtime middleware, magic predicate inference, or switching the language.
 
-## Four primitives, never conflated
+## The three permission layers
 
-Same word "hierarchy" in casual speech, different animal in code. Conflating these is a footgun.
+`prisma-guarddog` models authorization as three distinct layers, each separately declared and separately referenceable in policy predicates. The fourth concept (`resources`) is a topology, not a permission layer.
 
-1. **`dbRoles`** — Postgres roles (`app_user`, `app_system`). DB-role inheritance: `app_system` inherits `app_user`.
-2. **`businessRoles`** — application roles (`workspace.admin`, `workbench.editor`, `org.viewer`).
-3. **`resources`** — resource tree (Tenant → Org → Workspace → Workbench). Resource-scope grant cascade.
-4. **`grants`** — principal/action/resource records.
+1. **`dbRoles`** — Postgres roles (`app_user`, `app_system`). DB-role inheritance: `app_system` inherits `app_user`. Emitted as `CREATE ROLE` + role-membership GRANTs.
+2. **`appRoles`** — application role names (`workspace.admin`, `workbench.editor`). Referenced via `p.hasAppRole(...)`. Resolved against the `roles` claim.
+3. **`resourceGrants`** — principal × action × resource records. Referenced via `p.hasGrant(action, col)`. Resolved against a `grants` claim (Phase 1) or a grants table (Phase 2+).
 
-These do NOT share an abstraction. See [ADR-0003](./docs/adr/0003-four-primitive-split.md).
+Plus a fourth orthogonal mechanism:
+
+- **Per-resource jsonb permissions** — a `permissions: jsonb` column on individual resources carrying app-defined access lists. Referenced via `p.hasResourcePermission(action, col)`. Lets denormalized access logic ride alongside row data.
+
+And the topology primitive:
+
+- **`resources`** — resource tree (Tenant → Org → Workspace → Workbench). Not a permission layer; declares parent/child relationships that other things cascade through.
+
+Never conflate the layers. "Hierarchy" is one word, several animals: dbRole inheritance, appRole membership, resourceGrant scope, resource-tree cascade, jsonb-permission lookup all use different SQL and resolve at different stages. See [ADR-0003](./docs/adr/0003-four-primitive-split.md) (originally written before the three-layer split; the layer naming there will be updated in the same commit that renames `businessRoles` → `appRoles`).
 
 ## Column visibility — hard split
 
@@ -59,6 +69,21 @@ See [ADR-0006](./docs/adr/0006-sidecar-migration-metadata.md), [ADR-0007](./docs
 
 See [ADR-0014](./docs/adr/0014-phase-scope-boundaries.md).
 
+## The schema file convention
+
+The user's primary interface is a **schema file** at `prisma/guarddog.ts` (or wherever `guarddog.config.ts` points). It `export default`s a value built by `defineSchema({...})`, consolidating claims, the three permission layers, resources, and a `policies(guard)` callback. The CLI auto-discovers it. See [ADR-0018](./docs/adr/0018-schema-file-as-primary-interface.md).
+
+When proposing example code, default to the schema-file form — not raw `new Guarddog({...})`. Reserve the imperative form for cases where the user is clearly extending guarddog itself (testing harness internals, custom extensions).
+
+## Self-contained emission
+
+Emitted SQL **never** depends on consumer-written helpers, an `app.*` schema the consumer maintains, or library code the consumer installs. If guarddog declares it in the schema, guarddog emits the DDL to make it real. Past examples that got this wrong (and the fix):
+
+- Scoped `hasRole` used to emit `app.has_role_on(...)` — refactored to inline claim-payload reads.
+- dbRoles used to be assumed pre-existing — `emitRoles()` now generates `CREATE ROLE` + membership GRANTs.
+
+The migration is the boundary. Anything between the schema file and a working database is guarddog's job to generate.
+
 ## Do NOT propose
 
 - ZenStack, Yates, or any generic policy framework
@@ -69,6 +94,8 @@ See [ADR-0014](./docs/adr/0014-phase-scope-boundaries.md).
 - A central manifest file or schema snapshot
 - Reverse-engineering business intent from imported SQL ([ADR-0012](./docs/adr/0012-scaffold-only-importer.md))
 - pg-mem / pglite shims for testing — real Postgres only ([ADR-0013](./docs/adr/0013-real-postgres-required-for-tests.md))
+- Requiring the consumer to hand-write any SQL guarddog could generate (helper functions, schemas, roles, grants tables — all guarddog's job)
+- Imperative `new Guarddog({...})` examples in user-facing docs (schema file pattern is canonical — [ADR-0018](./docs/adr/0018-schema-file-as-primary-interface.md))
 
 ## Toolchain
 
@@ -82,5 +109,5 @@ See [ADR-0014](./docs/adr/0014-phase-scope-boundaries.md).
 
 1. Read the relevant ADR before proposing structural changes.
 2. Confirm whether the question is about `columnPrivileges` (Phase 1) or row-conditional masking (Phase 2) before answering column-level visibility questions.
-3. Confirm whether "hierarchy" means dbRole inheritance or resource-scope cascade before answering grant questions.
-4. The Prisma schema is the source of truth for model definitions. The migration history (via sidecars) is the source of truth for currently-deployed policies. There is no third source of truth.
+3. Confirm which permission layer is in play (dbRole / appRole / resourceGrant / per-resource jsonb) before answering authorization questions — they have different APIs and different SQL output.
+4. The Prisma schema (`schema.prisma`) is the source of truth for model definitions. The guarddog schema (`prisma/guarddog.ts`) is the source of truth for policies. The migration history (via sidecars) is the source of truth for currently-deployed state. There is no fourth source of truth.

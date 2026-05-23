@@ -30,6 +30,7 @@ The Phase 1 set:
 | 0015 | [TypeScript as the DSL](./adr/0015-typescript-as-dsl.md)                                                    |
 | 0016 | [Turborepo monorepo](./adr/0016-turborepo-monorepo.md)                                                      |
 | 0017 | [TypeScript implementation; no compiled binary](./adr/0017-typescript-implementation.md)                    |
+| 0018 | [Schema file as the primary interface](./adr/0018-schema-file-as-primary-interface.md)                      |
 
 ## To be added
 

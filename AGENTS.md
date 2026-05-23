@@ -4,7 +4,17 @@ This file is read by Cursor, Codex, and other AI coding agents that don't read `
 
 ## What this repo is
 
-`prisma-guarddog` is a TypeScript policy compiler and verification harness for Prisma-backed Postgres applications. It emits Postgres RLS DDL, role grants, column privileges, snapshots, Prisma migrations, and test scaffolds.
+`prisma-guarddog` is a **schema-driven policy compiler for Prisma-backed Postgres applications**. The user maintains a TypeScript schema file (conventionally `prisma/guarddog.ts`, adjacent to `prisma/schema.prisma`). The CLI (or Prisma generator hook) reads that schema and produces idempotent SQL migrations covering: Postgres roles, RLS policies, column privileges, and per-resource permission infrastructure.
+
+Mental model parallels Prisma's own: schema file in, autocomplete + linting via the TypeScript LSP, idempotent migrations out, applied through Prisma's standard migrate flow. See [ADR-0018](./docs/adr/0018-schema-file-as-primary-interface.md).
+
+The three permission layers we model:
+
+1. **`dbRoles`** — Postgres roles (`CREATE ROLE` + membership graph)
+2. **`appRoles`** — application-level role strings, resolved against the `roles` claim
+3. **`resourceGrants`** — principal × action × resource records, resolved against a `grants` claim (Phase 1) or grants table (Phase 2+)
+
+Plus per-resource jsonb permissions for denormalized app-defined access lists.
 
 **It is NOT:**
 
@@ -12,6 +22,7 @@ This file is read by Cursor, Codex, and other AI coding agents that don't read `
 - A Prisma middleware / client extension
 - A ZenStack clone
 - A generic FGA platform
+- A library called imperatively (the `Guarddog` class is a runtime detail; consumers think in terms of the schema file)
 
 For the full architectural framing, decision log, and roadmap, read in order:
 
@@ -39,9 +50,11 @@ See [ADR-0016](./docs/adr/0016-turborepo-monorepo.md) for the package split rati
 ## How to contribute
 
 1. Read the relevant ADRs before proposing architectural changes.
-2. Every new Prisma model in a consumer's policies file must have `.policy()`, `.noPolicy()`, or `importedRawPolicy()` — enforced by `@prisma-guarddog/lint`.
+2. Every new Prisma model in a consumer's policies must have `.policy()`, `.noPolicy()`, or `importedRawPolicy()` — enforced by `@prisma-guarddog/lint`.
 3. All emitted DDL must be idempotent (see [ADR-0008](./docs/adr/0008-idempotent-ddl-emission.md)).
-4. Never propose runtime enforcement, Prisma middleware, or a non-TypeScript DSL.
+4. All emitted DDL must be self-contained — nothing the consumer has to maintain by hand sits between the schema file and a working database.
+5. User-facing example code should use the schema file form (`defineSchema({...})` → default export), not raw `new Guarddog({...})` ([ADR-0018](./docs/adr/0018-schema-file-as-primary-interface.md)).
+6. Never propose runtime enforcement, Prisma middleware, or a non-TypeScript DSL.
 
 ## Learned preferences
 
