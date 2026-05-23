@@ -27,6 +27,9 @@ export type { ResourceParentRef, ResourceSpec, ResourceTreeDefinition } from './
 export { defineResourceGrants } from './resource-grants.js'
 export type { ResourceGrantsDefinition, ResourceGrantsSource } from './resource-grants.js'
 
+export { defineSchema, materializeSchema } from './schema.js'
+export type { SchemaDefinition } from './schema.js'
+
 export { Guarddog, ModelBuilder, PolicyBuilder } from './guarddog.js'
 export type { GuarddogConfig } from './guarddog.js'
 
