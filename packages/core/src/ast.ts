@@ -18,9 +18,13 @@ export type Verb = 'select' | 'insert' | 'update' | 'delete'
  * Expression AST. Predicates inside USING and WITH CHECK clauses produce
  * an `Expr` tree. The emitter walks the tree and renders SQL.
  *
- * `hasRole` is a high-level helper that the emitter expands into the
- * appropriate JOIN-against-claim or `current_setting()->>'roles' @> ARRAY[...]`
- * pattern depending on dialect.
+ * The three permission-layer helpers — `hasAppRole`, `hasGrant`,
+ * `hasResourcePermission` — are high-level forms that the emitter expands
+ * into inline jsonb claim / column lookups. Each maps to exactly one of the
+ * three permission layers (appRoles, resourceGrants, per-resource jsonb).
+ *
+ * `isOwner` and `inArray` are convenience predicates that compile to
+ * deterministic SQL fragments.
  *
  * `raw` is the explicit escape hatch — content is emitted verbatim.
  */
@@ -32,7 +36,18 @@ export type Expr =
   | { readonly kind: 'and'; readonly operands: ReadonlyArray<Expr> }
   | { readonly kind: 'or'; readonly operands: ReadonlyArray<Expr> }
   | { readonly kind: 'not'; readonly operand: Expr }
-  | { readonly kind: 'hasRole'; readonly role: string; readonly scopeColumn: string | undefined }
+  /** Layer 2 (appRoles): "does the requesting user hold `<role>` globally?" */
+  | { readonly kind: 'hasAppRole'; readonly role: string }
+  /**
+   * Layer 3 (resourceGrants): "does the requesting user have `<action>` on
+   * the resource identified by `<scopeColumn>`?"
+   */
+  | { readonly kind: 'hasGrant'; readonly action: string; readonly scopeColumn: string }
+  /**
+   * Per-resource jsonb permissions: "does the requesting user (or their
+   * groups) have `<action>` in the `permissions` jsonb stored on this row?"
+   */
+  | { readonly kind: 'hasResourcePermission'; readonly action: string; readonly jsonbColumn: string }
   | { readonly kind: 'isOwner'; readonly ownerColumn: string }
   | { readonly kind: 'inArray'; readonly needle: Expr; readonly haystack: Expr }
   | { readonly kind: 'raw'; readonly sql: string }

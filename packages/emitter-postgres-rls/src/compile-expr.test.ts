@@ -2,7 +2,13 @@ import { defineClaims } from '@prisma-guarddog/core'
 import type { ClaimsDefinition, Expr, LiteralValue } from '@prisma-guarddog/core'
 import { describe, expect, it } from 'vitest'
 
-import { compileExpr, defaultCompileHasRole, defaultCompileIsOwner, type ExprCompileCtx } from './compile-expr.js'
+import {
+  compileExpr,
+  defaultCompileHasAppRole,
+  defaultCompileHasGrant,
+  defaultCompileIsOwner,
+  type ExprCompileCtx,
+} from './compile-expr.js'
 
 const claims: ClaimsDefinition = defineClaims({
   accessor: 'request.jwt.claims',
@@ -31,8 +37,11 @@ const or = (...operands: Expr[]): Expr => Object.freeze({ kind: 'or', operands: 
 const not = (operand: Expr): Expr => Object.freeze({ kind: 'not', operand }) as Expr
 const binop = (op: 'eq' | 'neq' | 'lt' | 'lte' | 'gt' | 'gte', left: Expr, right: Expr): Expr =>
   Object.freeze({ kind: 'binop', op, left, right }) as Expr
-const hasRole = (role: string, scopeColumn?: string): Expr =>
-  Object.freeze({ kind: 'hasRole', role, scopeColumn }) as Expr
+const hasAppRole = (role: string): Expr => Object.freeze({ kind: 'hasAppRole', role }) as Expr
+const hasGrant = (action: string, scopeColumn: string): Expr =>
+  Object.freeze({ kind: 'hasGrant', action, scopeColumn }) as Expr
+const hasResourcePermission = (action: string, jsonbColumn: string): Expr =>
+  Object.freeze({ kind: 'hasResourcePermission', action, jsonbColumn }) as Expr
 const isOwner = (ownerColumn: string): Expr => Object.freeze({ kind: 'isOwner', ownerColumn }) as Expr
 const inArray = (needle: Expr, haystack: Expr): Expr => Object.freeze({ kind: 'inArray', needle, haystack }) as Expr
 const raw = (sql: string): Expr => Object.freeze({ kind: 'raw', sql }) as Expr
@@ -130,36 +139,81 @@ describe('compileExpr — binops and logical', () => {
   })
 })
 
-describe('compileExpr — hasRole (default strategy)', () => {
-  it('compiles scope-less hasRole via jsonb ? operator on the roles claim', () => {
-    expect(compileExpr(hasRole('workspace.admin'), baseCtx())).toBe(
+describe('compileExpr — hasAppRole (layer 2)', () => {
+  it('compiles via jsonb ? operator on the roles claim', () => {
+    expect(compileExpr(hasAppRole('workspace.admin'), baseCtx())).toBe(
       "((current_setting('request.jwt.claims', true)::jsonb -> 'roles') ? 'workspace.admin')"
     )
   })
 
-  it('compiles scoped hasRole inline against the roleScopes claim — no helper function dependency', () => {
-    expect(compileExpr(hasRole('workspace.admin', 'workspace_id'), baseCtx({ qualifyColumns: true }))).toBe(
-      "((current_setting('request.jwt.claims', true)::jsonb -> 'roleScopes' -> 'workspace.admin') ? (workbench.workspace_id)::text)"
-    )
-  })
-
-  it('emitted scoped hasRole never references app.has_role_on or any consumer helper', () => {
-    const sql = compileExpr(hasRole('workspace.admin', 'workspace_id'), baseCtx())
-    expect(sql).not.toContain('app.has_role_on')
+  it('output never references app.* or any consumer-side helper', () => {
+    const sql = compileExpr(hasAppRole('workspace.admin'), baseCtx())
     expect(sql).not.toMatch(/\bapp\./)
-    // current_setting (built-in) is allowed; we're checking we don't add OUR own helpers.
     expect(sql).toContain('current_setting')
   })
 
-  it('honors an overridden compileHasRole', () => {
-    const custom = compileExpr(hasRole('x'), baseCtx({ compileHasRole: () => 'CUSTOM' }))
+  it('honors an overridden compileHasAppRole', () => {
+    const custom = compileExpr(hasAppRole('x'), baseCtx({ compileHasAppRole: () => 'CUSTOM' }))
     expect(custom).toBe('CUSTOM')
   })
+})
 
-  it('default helpers compose with predicates', () => {
+describe('compileExpr — hasGrant (layer 3)', () => {
+  it('compiles inline against the default "grants" claim path', () => {
+    expect(compileExpr(hasGrant('edit', 'workspace_id'), baseCtx({ qualifyColumns: true }))).toBe(
+      "((current_setting('request.jwt.claims', true)::jsonb -> 'grants' -> 'edit') ? (workbench.workspace_id)::text)"
+    )
+  })
+
+  it('uses the configured resourceGrants.claimPath when present', () => {
+    const ctx = baseCtx({
+      qualifyColumns: true,
+      resourceGrants: {
+        source: 'claims',
+        claimPath: 'permissions',
+        actions: ['edit'],
+      },
+    })
+    expect(compileExpr(hasGrant('edit', 'workspace_id'), ctx)).toContain("'permissions' -> 'edit'")
+  })
+
+  it('output never references app.* or any consumer-side helper', () => {
+    const sql = compileExpr(hasGrant('edit', 'workspace_id'), baseCtx())
+    expect(sql).not.toMatch(/\bapp\./)
+  })
+
+  it('honors an overridden compileHasGrant', () => {
+    const custom = compileExpr(hasGrant('edit', 'x'), baseCtx({ compileHasGrant: () => 'CUSTOM' }))
+    expect(custom).toBe('CUSTOM')
+  })
+})
+
+describe('compileExpr — hasResourcePermission (per-resource jsonb)', () => {
+  it('compiles inline against the users.<sub> path in the jsonb column', () => {
+    expect(compileExpr(hasResourcePermission('read', 'permissions'), baseCtx({ qualifyColumns: true }))).toBe(
+      "((workbench.permissions -> 'users' -> (current_setting('request.jwt.claims', true)::json ->> 'sub')) ? 'read')"
+    )
+  })
+
+  it('output never references app.* or any consumer-side helper', () => {
+    const sql = compileExpr(hasResourcePermission('read', 'permissions'), baseCtx())
+    expect(sql).not.toMatch(/\bapp\./)
+  })
+
+  it('honors an overridden compileHasResourcePermission', () => {
+    const custom = compileExpr(
+      hasResourcePermission('read', 'permissions'),
+      baseCtx({ compileHasResourcePermission: () => 'CUSTOM' })
+    )
+    expect(custom).toBe('CUSTOM')
+  })
+})
+
+describe('compileExpr — default-compiler helpers compose with predicates', () => {
+  it('defaultCompileHasAppRole / defaultCompileHasGrant fragments embed the role/action name', () => {
     const ctx = baseCtx({ qualifyColumns: true })
-    expect(defaultCompileHasRole('a', undefined, ctx)).toContain("? 'a'")
-    expect(defaultCompileHasRole('a', 'workbench.id', ctx)).toContain("'roleScopes' -> 'a'")
+    expect(defaultCompileHasAppRole('a', ctx)).toContain("? 'a'")
+    expect(defaultCompileHasGrant('edit', 'workbench.id', ctx)).toContain("-> 'edit'")
   })
 })
 

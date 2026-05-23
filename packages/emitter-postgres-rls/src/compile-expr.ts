@@ -3,12 +3,21 @@
  * no global state. Caller supplies the context (current table, claim
  * schema, optional overrides for high-level helpers).
  *
- * The `hasRole` and `isOwner` strategies are pluggable via `ExprCompileCtx`
- * because the right SQL shape depends on the consumer's claim structure
- * and grant-table conventions. Sensible defaults are provided.
+ * Three permission-layer compilers (`hasAppRole`, `hasGrant`,
+ * `hasResourcePermission`) and one ownership compiler (`isOwner`) are
+ * pluggable via `ExprCompileCtx` because the right SQL shape depends on
+ * the consumer's claim structure. Sensible defaults are provided, all
+ * fully self-contained (no consumer-side helper functions or schema).
  */
 
-import type { BinaryOp, ClaimField, ClaimsDefinition, ClaimsShape, Expr } from '@prisma-guarddog/core'
+import type {
+  BinaryOp,
+  ClaimField,
+  ClaimsDefinition,
+  ClaimsShape,
+  Expr,
+  ResourceGrantsDefinition,
+} from '@prisma-guarddog/core'
 
 import { formatLiteral, quoteIdent, quoteString } from './identifiers.js'
 
@@ -29,13 +38,29 @@ export interface ExprCompileCtx {
   readonly qualifyColumns: boolean
   readonly claims: ClaimsDefinition
   /**
-   * Override the `p.hasRole(role, scopeColumn?)` compilation. Default
-   * checks containment in the `roles` claim (jsonb `?`) for scope-less
-   * calls, and calls a helper function `app.has_role_on(role, scopeId)`
-   * for scoped calls — consumers can implement that helper against their
-   * own grants table or override entirely.
+   * The configured resource-grants layer. Drives the claim path that
+   * `hasGrant` compiles against (default 'grants'). Optional — when
+   * undefined, `hasGrant` still compiles but uses the convention default.
    */
-  readonly compileHasRole?: HasRoleCompiler
+  readonly resourceGrants?: ResourceGrantsDefinition
+  /**
+   * Override `p.hasAppRole(role)` compilation. Default checks containment
+   * in the `roles` claim via jsonb `?` operator.
+   */
+  readonly compileHasAppRole?: HasAppRoleCompiler
+  /**
+   * Override `p.hasGrant(action, col)` compilation. Default reads the
+   * configured `resourceGrants.claimPath` (or 'grants') jsonb object,
+   * keyed by action name, and checks the row's scope column against the
+   * resulting array via `?`.
+   */
+  readonly compileHasGrant?: HasGrantCompiler
+  /**
+   * Override `p.hasResourcePermission(action, col)` compilation. Default
+   * checks the row's jsonb permissions column under `.users.<sub>` for
+   * the action via `?`.
+   */
+  readonly compileHasResourcePermission?: HasResourcePermissionCompiler
   /**
    * Override the `p.isOwner(col)` compilation. Default compares the
    * column to `(claims ->> 'sub')::uuid`.
@@ -43,7 +68,11 @@ export interface ExprCompileCtx {
   readonly compileIsOwner?: IsOwnerCompiler
 }
 
-export type HasRoleCompiler = (role: string, scopeColumnRef: string | undefined, ctx: ExprCompileCtx) => string
+export type HasAppRoleCompiler = (role: string, ctx: ExprCompileCtx) => string
+
+export type HasGrantCompiler = (action: string, scopeColumnRef: string, ctx: ExprCompileCtx) => string
+
+export type HasResourcePermissionCompiler = (action: string, jsonbColumnRef: string, ctx: ExprCompileCtx) => string
 
 export type IsOwnerCompiler = (ownerColumnRef: string, ctx: ExprCompileCtx) => string
 
@@ -67,10 +96,19 @@ export function compileExpr(expr: Expr, ctx: ExprCompileCtx): string {
       return `(${expr.operands.map((o) => compileExpr(o, ctx)).join(' OR ')})`
     case 'not':
       return `(NOT ${compileExpr(expr.operand, ctx)})`
-    case 'hasRole': {
-      const scopeColumnRef = expr.scopeColumn === undefined ? undefined : formatColumnRef(expr.scopeColumn, ctx)
-      const compiler = ctx.compileHasRole ?? defaultCompileHasRole
-      return compiler(expr.role, scopeColumnRef, ctx)
+    case 'hasAppRole': {
+      const compiler = ctx.compileHasAppRole ?? defaultCompileHasAppRole
+      return compiler(expr.role, ctx)
+    }
+    case 'hasGrant': {
+      const scopeColumnRef = formatColumnRef(expr.scopeColumn, ctx)
+      const compiler = ctx.compileHasGrant ?? defaultCompileHasGrant
+      return compiler(expr.action, scopeColumnRef, ctx)
+    }
+    case 'hasResourcePermission': {
+      const jsonbColumnRef = formatColumnRef(expr.jsonbColumn, ctx)
+      const compiler = ctx.compileHasResourcePermission ?? defaultCompileHasResourcePermission
+      return compiler(expr.action, jsonbColumnRef, ctx)
     }
     case 'isOwner': {
       const ownerRef = formatColumnRef(expr.ownerColumn, ctx)
@@ -136,38 +174,53 @@ function sqlBinop(op: BinaryOp): string {
 }
 
 /**
- * Default `hasRole` compilation strategy. Self-contained — produces inline
- * SQL that depends only on the session claims. No consumer-side helper
- * function, no `app.*` schema dependency. The emitter's promise is "TS in,
- * migration out"; requiring hand-written SQL helpers breaks that.
+ * Default `hasAppRole` compilation. Self-contained: checks containment
+ * in the `roles` claim via jsonb `?` operator.
  *
- * Two forms:
+ *     ((current_setting('<accessor>', true)::jsonb -> 'roles') ? '<role>')
  *
- *   scope-less:
- *     (current_setting('<accessor>', true)::jsonb -> 'roles') ? '<role>'
- *
- *     Assumes `roles` is a jsonb array of role strings in the session
- *     claims. The `?` operator checks element existence.
- *
- *   scoped (with scopeColumnRef):
- *     (current_setting('<accessor>', true)::jsonb -> 'roleScopes' -> '<role>')
- *       ? <scopeColumnRef>::text
- *
- *     Assumes `roleScopes` is a jsonb object on the claims mapping each
- *     role name to a jsonb array of scope IDs (typically resource UUIDs
- *     stringified). The `?` checks whether the row's scope-column value
- *     appears in that array.
- *
- * Both forms operate purely on the claim payload — no grants table, no
- * helper function. Consumers whose claim shape differs (flat grants array,
- * external FGA service, etc.) override via `ExprCompileCtx.compileHasRole`.
+ * Assumes `roles` is a jsonb array of role strings in the session claims.
+ * Consumers with a different claim shape override via
+ * `ExprCompileCtx.compileHasAppRole`.
  */
-export const defaultCompileHasRole: HasRoleCompiler = (role, scopeColumnRef, ctx) => {
+export const defaultCompileHasAppRole: HasAppRoleCompiler = (role, ctx) => {
   const accessorLit = quoteString(ctx.claims.accessor)
-  if (scopeColumnRef === undefined) {
-    return `((current_setting(${accessorLit}, true)::jsonb -> 'roles') ? ${quoteString(role)})`
-  }
-  return `((current_setting(${accessorLit}, true)::jsonb -> 'roleScopes' -> ${quoteString(role)}) ? (${scopeColumnRef})::text)`
+  return `((current_setting(${accessorLit}, true)::jsonb -> 'roles') ? ${quoteString(role)})`
+}
+
+/**
+ * Default `hasGrant` compilation. Self-contained: reads the resourceGrants
+ * claim path (default 'grants') as a jsonb object keyed by action name ->
+ * jsonb array of resource IDs, and checks whether the row's scope column
+ * value appears in that array.
+ *
+ *     ((current_setting('<accessor>', true)::jsonb -> '<claimPath>' -> '<action>')
+ *       ? <scopeColumnRef>::text)
+ *
+ * If `ctx.resourceGrants` is undefined the path defaults to 'grants'.
+ */
+export const defaultCompileHasGrant: HasGrantCompiler = (action, scopeColumnRef, ctx) => {
+  const accessorLit = quoteString(ctx.claims.accessor)
+  const claimPath = ctx.resourceGrants?.claimPath ?? 'grants'
+  return `((current_setting(${accessorLit}, true)::jsonb -> ${quoteString(claimPath)} -> ${quoteString(action)}) ? (${scopeColumnRef})::text)`
+}
+
+/**
+ * Default `hasResourcePermission` compilation. Self-contained: checks the
+ * row's jsonb permissions column under `.users.<sub>` for the action.
+ *
+ *     ((<jsonbColumnRef> -> 'users' -> (claims ->> 'sub')) ? '<action>')
+ *
+ * Convention: the jsonb column is shaped as
+ *   { "users": { "<sub>": ["read", "write"] }, "groups": { ... } }
+ *
+ * Override via `ExprCompileCtx.compileHasResourcePermission` for different
+ * shapes (e.g., group-keyed inclusion, flat grant arrays).
+ */
+export const defaultCompileHasResourcePermission: HasResourcePermissionCompiler = (action, jsonbColumnRef, ctx) => {
+  const accessorLit = quoteString(ctx.claims.accessor)
+  const subClaim = `(current_setting(${accessorLit}, true)::json ->> 'sub')`
+  return `((${jsonbColumnRef} -> 'users' -> ${subClaim}) ? ${quoteString(action)})`
 }
 
 /**

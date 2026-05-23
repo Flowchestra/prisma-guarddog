@@ -16,8 +16,20 @@
  * `.emit()` lifecycle in core, landing later).
  */
 
-export { compileExpr, defaultCompileHasRole, defaultCompileIsOwner } from './compile-expr.js'
-export type { ExprCompileCtx, HasRoleCompiler, IsOwnerCompiler } from './compile-expr.js'
+export {
+  compileExpr,
+  defaultCompileHasAppRole,
+  defaultCompileHasGrant,
+  defaultCompileHasResourcePermission,
+  defaultCompileIsOwner,
+} from './compile-expr.js'
+export type {
+  ExprCompileCtx,
+  HasAppRoleCompiler,
+  HasGrantCompiler,
+  HasResourcePermissionCompiler,
+  IsOwnerCompiler,
+} from './compile-expr.js'
 
 export { emitPolicy, emitPolymorphic } from './emit.js'
 export type { EmitContext } from './emit.js'

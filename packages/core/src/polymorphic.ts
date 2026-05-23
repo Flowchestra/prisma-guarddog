@@ -14,11 +14,11 @@
  *     poly.target('Workspace', { model: 'Workspace' })
  *       .policy('app_user')
  *       .select(p => p.claim('tenantId').eq(col('tenantId')))
- *       .insert({ check: p => p.hasRole('workspace.admin', col('targetId')) });
+ *       .insert({ check: p => p.hasGrant('workspace.admin', col('targetId')) });
  *
  *     poly.target('Workbench', { model: 'Workbench' })
  *       .policy('app_user')
- *       .select(p => p.hasRole('workbench.editor', col('targetId')));
+ *       .select(p => p.hasGrant('workbench.editor', col('targetId')));
  *
  * At emit time each target produces a separate `CREATE POLICY` with the
  * discriminator equality prepended:
@@ -276,7 +276,9 @@ function freezeExprDeep(expr: Expr): Expr {
     case 'literal':
     case 'col':
     case 'claim':
-    case 'hasRole':
+    case 'hasAppRole':
+    case 'hasGrant':
+    case 'hasResourcePermission':
     case 'isOwner':
     case 'raw':
       return Object.freeze(expr) as Expr

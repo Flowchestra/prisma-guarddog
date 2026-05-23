@@ -13,13 +13,13 @@
  *     guard.model('Workbench')
  *       .policy('app_user')
  *       .select(p => p.claim('tenantId').eq(col('tenantId'))
- *                     .and(p.hasRole('workspace.admin', col('workspaceId'))))
- *       .insert({ check: p => p.hasRole('workspace.editor', col('workspaceId')) })
+ *                     .and(p.hasGrant('workspace.admin', col('workspaceId'))))
+ *       .insert({ check: p => p.hasGrant('workspace.editor', col('workspaceId')) })
  *       .update({
  *         using: p => p.isOwner(col('ownerId')),
- *         check: p => p.hasRole('workspace.admin', col('workspaceId')),
+ *         check: p => p.hasGrant('workspace.admin', col('workspaceId')),
  *       })
- *       .delete({ using: p => p.hasRole('workspace.admin', col('workspaceId')) });
+ *       .delete({ using: p => p.hasGrant('workspace.admin', col('workspaceId')) });
  *
  * `.policy()` always returns the same `PolicyBuilder` instance for a given
  * (model, dbRole) pair within a Guarddog — repeated `.policy('app_user')` on
@@ -514,7 +514,9 @@ function freezeExprDeep(expr: Expr): Expr {
     case 'literal':
     case 'col':
     case 'claim':
-    case 'hasRole':
+    case 'hasAppRole':
+    case 'hasGrant':
+    case 'hasResourcePermission':
     case 'isOwner':
     case 'raw':
       return Object.freeze(expr) as Expr

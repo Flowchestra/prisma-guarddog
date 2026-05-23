@@ -155,7 +155,7 @@ describe('PolymorphicTargetPolicyBuilder authoring', () => {
         p
           .claim('tenantId')
           .eq(col('tenantId'))
-          .and(p.hasRole('workspace.admin', col('targetId')))
+          .and(p.hasGrant('workspace.admin', col('targetId')))
       )
 
     const target = guard.getPolymorphics()[0]?.targets[0] as PolymorphicTargetAst
@@ -183,19 +183,19 @@ describe('PolymorphicTargetPolicyBuilder authoring', () => {
       .target('Workspace', { model: 'Workspace' })
       .policy('app_user')
       .select((p) => p.claim('tenantId').eq(col('tenantId')))
-      .insert({ check: (p) => p.hasRole('workspace.admin', col('targetId')) })
+      .insert({ check: (p) => p.hasGrant('workspace.admin', col('targetId')) })
       .update({
         using: (p) => p.isOwner(col('ownerId')),
-        check: (p) => p.hasRole('workspace.admin', col('targetId')),
+        check: (p) => p.hasGrant('workspace.admin', col('targetId')),
       })
-      .delete({ using: (p) => p.hasRole('workspace.admin', col('targetId')) })
+      .delete({ using: (p) => p.hasGrant('workspace.admin', col('targetId')) })
 
     const policy = guard.getPolymorphics()[0]?.targets[0]?.policies[0] as PolymorphicTargetPolicyAst
     expect(policy.select?.using.kind).toBe('binop')
-    expect(policy.insert?.check.kind).toBe('hasRole')
+    expect(policy.insert?.check.kind).toBe('hasGrant')
     expect(policy.update?.using.kind).toBe('isOwner')
-    expect(policy.update?.check.kind).toBe('hasRole')
-    expect(policy.delete?.using.kind).toBe('hasRole')
+    expect(policy.update?.check.kind).toBe('hasGrant')
+    expect(policy.delete?.using.kind).toBe('hasGrant')
   })
 
   it('rawSql wraps a verb as Expr.raw', () => {

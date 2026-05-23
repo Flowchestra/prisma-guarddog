@@ -54,7 +54,7 @@ describe('Guarddog.model().policy()', () => {
         p
           .claim('tenantId')
           .eq(col('tenantId'))
-          .and(p.hasRole('workspace.admin', col('workspaceId')))
+          .and(p.hasGrant('workspace.admin', col('workspaceId')))
       )
 
     const policies = guard.getPolicies()
@@ -96,19 +96,19 @@ describe('Guarddog.model().policy()', () => {
       .model('Workbench')
       .policy('app_user')
       .select((p) => p.claim('tenantId').eq(col('tenantId')))
-      .insert({ check: (p) => p.hasRole('workspace.editor', col('workspaceId')) })
+      .insert({ check: (p) => p.hasGrant('workspace.editor', col('workspaceId')) })
       .update({
         using: (p) => p.isOwner(col('ownerId')),
-        check: (p) => p.hasRole('workspace.admin', col('workspaceId')),
+        check: (p) => p.hasGrant('workspace.admin', col('workspaceId')),
       })
-      .delete({ using: (p) => p.hasRole('workspace.admin', col('workspaceId')) })
+      .delete({ using: (p) => p.hasGrant('workspace.admin', col('workspaceId')) })
 
     const policy = guard.getPolicies()[0] as PolicyAst
     expect(policy.select?.using.kind).toBe('binop')
-    expect(policy.insert?.check.kind).toBe('hasRole')
+    expect(policy.insert?.check.kind).toBe('hasGrant')
     expect(policy.update?.using.kind).toBe('isOwner')
-    expect(policy.update?.check.kind).toBe('hasRole')
-    expect(policy.delete?.using.kind).toBe('hasRole')
+    expect(policy.update?.check.kind).toBe('hasGrant')
+    expect(policy.delete?.using.kind).toBe('hasGrant')
   })
 
   it('UPDATE requires both using and check (ADR-0005 — no inference)', () => {

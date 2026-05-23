@@ -108,7 +108,7 @@ describe('emitPolicy — verbs', () => {
     guard
       .model('Workbench')
       .policy('app_user')
-      .insert({ check: (p) => p.hasRole('workspace.editor', col('workspace_id')) })
+      .insert({ check: (p) => p.hasGrant('workspace.editor', col('workspace_id')) })
     const sql = emitPolicy(guard.getPolicies()[0]!, ctx)
     const createStmt = sql.find((s) => s.startsWith('CREATE POLICY workbench_app_user_insert'))
     expect(createStmt).toContain('FOR INSERT TO app_user')
@@ -123,7 +123,7 @@ describe('emitPolicy — verbs', () => {
       .policy('app_user')
       .update({
         using: (p) => p.isOwner(col('owner_id')),
-        check: (p) => p.hasRole('workspace.admin', col('workspace_id')),
+        check: (p) => p.hasGrant('workspace.admin', col('workspace_id')),
       })
     const sql = emitPolicy(guard.getPolicies()[0]!, ctx)
     const createStmt = sql.find((s) => s.startsWith('CREATE POLICY workbench_app_user_update'))
@@ -137,7 +137,7 @@ describe('emitPolicy — verbs', () => {
     guard
       .model('Workbench')
       .policy('app_user')
-      .delete({ using: (p) => p.hasRole('workspace.admin', col('workspace_id')) })
+      .delete({ using: (p) => p.hasGrant('workspace.admin', col('workspace_id')) })
     const sql = emitPolicy(guard.getPolicies()[0]!, ctx)
     const createStmt = sql.find((s) => s.startsWith('CREATE POLICY workbench_app_user_delete'))
     expect(createStmt).toContain('FOR DELETE TO app_user')
@@ -181,15 +181,15 @@ describe('emitPolicy — predicate compilation in a real policy', () => {
         p
           .claim('tenantId')
           .eq(col('tenant_id'))
-          .and(p.hasRole('workspace.admin', col('workspace_id')))
+          .and(p.hasGrant('workspace.admin', col('workspace_id')))
       )
     const sql = emitPolicy(guard.getPolicies()[0]!, ctx)
     const createStmt = sql.find((s) => s.startsWith('CREATE POLICY workbench_app_user_select'))!
-    // Pieces in order: claim extraction, equality, AND, scoped hasRole inline.
+    // Pieces in order: claim extraction, equality, AND, scoped hasGrant inline.
     expect(createStmt).toContain("'tenantId'")
     expect(createStmt).toContain('tenant_id')
     expect(createStmt).toContain(' AND ')
-    expect(createStmt).toContain("'roleScopes' -> 'workspace.admin'")
+    expect(createStmt).toContain("'grants' -> 'workspace.admin'")
     expect(createStmt).not.toContain('app.has_role_on')
   })
 })
@@ -205,7 +205,7 @@ describe('emitPolymorphic — discriminator equality auto-prepended', () => {
     poly
       .target('Workbench', { model: 'Workbench' })
       .policy('app_user')
-      .select((p) => p.hasRole('workbench.editor', col('target_id')))
+      .select((p) => p.hasGrant('workbench.editor', col('target_id')))
 
     const sql = emitPolymorphic(guard.getPolymorphics()[0]!, ctx)
     expect(sql[0]).toBe('ALTER TABLE scope_target ENABLE ROW LEVEL SECURITY;')
@@ -217,7 +217,7 @@ describe('emitPolymorphic — discriminator equality auto-prepended', () => {
 
     const wbCreate = sql.find((s) => s.startsWith('CREATE POLICY scope_target_workbench_app_user_select'))!
     expect(wbCreate).toContain("scope_target.target_type = 'Workbench'")
-    expect(wbCreate).toContain("'roleScopes' -> 'workbench.editor'")
+    expect(wbCreate).toContain("'grants' -> 'workbench.editor'")
     expect(wbCreate).not.toContain('app.has_role_on')
   })
 

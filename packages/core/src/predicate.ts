@@ -5,8 +5,8 @@
  *
  * Two complementary styles are supported:
  *
- *   Fluent:    `p.claim('tenantId').eq(col('tenantId')).and(p.hasRole(...))`
- *   Functional: `p.and(p.eq(p.claim('tenantId'), col('tenantId')), p.hasRole(...))`
+ *   Fluent:    `p.claim('tenantId').eq(col('tenantId')).and(p.hasAppRole(...))`
+ *   Functional: `p.and(p.eq(p.claim('tenantId'), col('tenantId')), p.hasAppRole(...))`
  *
  * Both produce identical AST. Pick whichever reads better at the call site.
  *
@@ -163,24 +163,65 @@ export class PredicateBuilder<TClaims = Record<string, unknown>> {
   }
 
   /**
-   * High-level helper: does the requesting user hold a appRole, optionally
-   * scoped to a particular resource identified by a column reference?
+   * Layer 2 (appRoles): "does the requesting user hold `<role>` globally?"
    *
-   *   p.hasRole('workspace.admin')                          // global
-   *   p.hasRole('workspace.admin', col('workspaceId'))      // scoped
+   *   p.hasAppRole('workspace.admin')
+   *
+   * Compiles to an inline jsonb containment check against the `roles` claim.
+   * Use `hasGrant` for resource-scoped checks instead.
    */
-  hasRole(role: string, scopeColumn?: FluentExpr): FluentExpr {
+  hasAppRole(role: string): FluentExpr {
     if (role.length === 0) {
-      throw new Error('[prisma-guarddog] hasRole: role name must be a non-empty string.')
+      throw new Error('[prisma-guarddog] hasAppRole: role name must be a non-empty string.')
     }
-    let scopeColumnName: string | undefined
-    if (scopeColumn !== undefined) {
-      if (scopeColumn.ast.kind !== 'col') {
-        throw new Error('[prisma-guarddog] hasRole: scopeColumn must be a column reference (use col("name")).')
-      }
-      scopeColumnName = scopeColumn.ast.column
+    return new FluentExpr(Object.freeze({ kind: 'hasAppRole', role }) as Expr)
+  }
+
+  /**
+   * Layer 3 (resourceGrants): "does the requesting user have `<action>` on
+   * the resource identified by `<scopeColumn>`?"
+   *
+   *   p.hasGrant('edit', col('workspaceId'))
+   *
+   * Compiles to an inline jsonb lookup against the configured resourceGrants
+   * claim path (default `grants`). The action vocabulary type-checks against
+   * the declared `defineResourceGrants({ actions: [...] })` set when the
+   * Guarddog generic is constrained.
+   */
+  hasGrant(action: string, scopeColumn: FluentExpr): FluentExpr {
+    if (action.length === 0) {
+      throw new Error('[prisma-guarddog] hasGrant: action name must be a non-empty string.')
     }
-    return new FluentExpr(Object.freeze({ kind: 'hasRole', role, scopeColumn: scopeColumnName }) as Expr)
+    if (scopeColumn.ast.kind !== 'col') {
+      throw new Error('[prisma-guarddog] hasGrant: scopeColumn must be a column reference (use col("name")).')
+    }
+    return new FluentExpr(Object.freeze({ kind: 'hasGrant', action, scopeColumn: scopeColumn.ast.column }) as Expr)
+  }
+
+  /**
+   * Per-resource jsonb permissions: "does the requesting user have `<action>`
+   * in the `permissions` jsonb stored on this row?"
+   *
+   *   p.hasResourcePermission('read', col('permissions'))
+   *
+   * Convention: the jsonb column is shaped as
+   *   { "users": { "<sub>": ["read", "write"] }, "groups": { ... } }
+   * and the default emitter checks the user-keyed entry against the sub
+   * claim. Override via `ExprCompileCtx.compileHasResourcePermission` for a
+   * different shape (flat grant arrays, group-keyed inclusion, etc.).
+   */
+  hasResourcePermission(action: string, jsonbColumn: FluentExpr): FluentExpr {
+    if (action.length === 0) {
+      throw new Error('[prisma-guarddog] hasResourcePermission: action name must be a non-empty string.')
+    }
+    if (jsonbColumn.ast.kind !== 'col') {
+      throw new Error(
+        '[prisma-guarddog] hasResourcePermission: jsonbColumn must be a column reference (use col("name")).'
+      )
+    }
+    return new FluentExpr(
+      Object.freeze({ kind: 'hasResourcePermission', action, jsonbColumn: jsonbColumn.ast.column }) as Expr
+    )
   }
 
   /**

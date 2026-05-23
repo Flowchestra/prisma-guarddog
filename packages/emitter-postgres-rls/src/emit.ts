@@ -15,13 +15,27 @@ import type {
   PolymorphicAst,
   PolymorphicTargetAst,
   PolymorphicTargetPolicyAst,
+  ResourceGrantsDefinition,
 } from '@prisma-guarddog/core'
 
-import { compileExpr, type ExprCompileCtx, type HasRoleCompiler, type IsOwnerCompiler } from './compile-expr.js'
+import {
+  compileExpr,
+  type ExprCompileCtx,
+  type HasAppRoleCompiler,
+  type HasGrantCompiler,
+  type HasResourcePermissionCompiler,
+  type IsOwnerCompiler,
+} from './compile-expr.js'
 import { defaultTableResolver, policyName, quoteIdent, quoteString } from './identifiers.js'
 
 export interface EmitContext {
   readonly claims: ClaimsDefinition
+  /**
+   * The configured resource-grants layer. Drives the claim path used by
+   * `hasGrant` compilation (default 'grants'). Required only when the
+   * compiled policies reference `p.hasGrant(...)`.
+   */
+  readonly resourceGrants?: ResourceGrantsDefinition
   /**
    * Override the Prisma model -> table name mapping. Falls back to
    * `defaultTableResolver` (CamelCase -> snake_case, singular, lowercase).
@@ -29,7 +43,9 @@ export interface EmitContext {
    * that consults the DMMF.
    */
   readonly resolveTable?: (modelName: string) => string
-  readonly compileHasRole?: HasRoleCompiler
+  readonly compileHasAppRole?: HasAppRoleCompiler
+  readonly compileHasGrant?: HasGrantCompiler
+  readonly compileHasResourcePermission?: HasResourcePermissionCompiler
   readonly compileIsOwner?: IsOwnerCompiler
   /**
    * When true, every column reference in compiled predicates is qualified
@@ -243,7 +259,12 @@ function makeExprCtx(table: string, ctx: EmitContext, qualifyColumns: boolean): 
     table,
     qualifyColumns,
     claims: ctx.claims,
-    ...(ctx.compileHasRole !== undefined && { compileHasRole: ctx.compileHasRole }),
+    ...(ctx.resourceGrants !== undefined && { resourceGrants: ctx.resourceGrants }),
+    ...(ctx.compileHasAppRole !== undefined && { compileHasAppRole: ctx.compileHasAppRole }),
+    ...(ctx.compileHasGrant !== undefined && { compileHasGrant: ctx.compileHasGrant }),
+    ...(ctx.compileHasResourcePermission !== undefined && {
+      compileHasResourcePermission: ctx.compileHasResourcePermission,
+    }),
     ...(ctx.compileIsOwner !== undefined && { compileIsOwner: ctx.compileIsOwner }),
   }
 }

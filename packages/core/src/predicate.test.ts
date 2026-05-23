@@ -59,7 +59,7 @@ describe('PredicateBuilder binary operators', () => {
 describe('PredicateBuilder logical combinators', () => {
   it('builds AND of multiple operands (functional)', () => {
     const a = p.claim('tenantId').eq(col('tenantId'))
-    const b = p.hasRole('workspace.admin', col('workspaceId'))
+    const b = p.hasGrant('workspace.admin', col('workspaceId'))
     const c = p.isOwner(col('ownerId'))
     const e = p.and(a, b, c).ast as Extract<Expr, { kind: 'and' }>
     expect(e.kind).toBe('and')
@@ -93,27 +93,52 @@ describe('PredicateBuilder logical combinators', () => {
   })
 })
 
-describe('PredicateBuilder.hasRole', () => {
-  it('builds a hasRole Expr without scope', () => {
-    const e = p.hasRole('workspace.admin').ast
-    expect(e).toEqual({ kind: 'hasRole', role: 'workspace.admin', scopeColumn: undefined })
-  })
-
-  it('builds a hasRole Expr scoped to a column', () => {
-    const e = p.hasRole('workspace.admin', col('workspaceId')).ast
-    expect(e).toEqual({
-      kind: 'hasRole',
+describe('PredicateBuilder.hasAppRole (layer 2)', () => {
+  it('builds a hasAppRole Expr from a role string', () => {
+    expect(p.hasAppRole('workspace.admin').ast).toEqual({
+      kind: 'hasAppRole',
       role: 'workspace.admin',
-      scopeColumn: 'workspaceId',
     })
   })
 
   it('rejects empty role name', () => {
-    expect(() => p.hasRole('')).toThrow(/role name must be a non-empty string/)
+    expect(() => p.hasAppRole('')).toThrow(/role name must be a non-empty string/)
+  })
+})
+
+describe('PredicateBuilder.hasGrant (layer 3)', () => {
+  it('builds a hasGrant Expr scoped to a column', () => {
+    expect(p.hasGrant('edit', col('workspaceId')).ast).toEqual({
+      kind: 'hasGrant',
+      action: 'edit',
+      scopeColumn: 'workspaceId',
+    })
+  })
+
+  it('rejects empty action name', () => {
+    expect(() => p.hasGrant('', col('workspaceId'))).toThrow(/action name must be a non-empty string/)
   })
 
   it('rejects non-column scope argument', () => {
-    expect(() => p.hasRole('workspace.admin', p.literal(true))).toThrow(/scopeColumn must be a column reference/)
+    expect(() => p.hasGrant('edit', p.literal(true))).toThrow(/scopeColumn must be a column reference/)
+  })
+})
+
+describe('PredicateBuilder.hasResourcePermission (per-resource jsonb)', () => {
+  it('builds a hasResourcePermission Expr from a jsonb column ref', () => {
+    expect(p.hasResourcePermission('read', col('permissions')).ast).toEqual({
+      kind: 'hasResourcePermission',
+      action: 'read',
+      jsonbColumn: 'permissions',
+    })
+  })
+
+  it('rejects empty action name', () => {
+    expect(() => p.hasResourcePermission('', col('permissions'))).toThrow(/action name must be a non-empty string/)
+  })
+
+  it('rejects non-column jsonb argument', () => {
+    expect(() => p.hasResourcePermission('read', p.literal(true))).toThrow(/jsonbColumn must be a column reference/)
   })
 })
 
