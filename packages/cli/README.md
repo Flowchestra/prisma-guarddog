@@ -15,7 +15,7 @@ The CLI. Also the npm package name for users who just want `guarddog migrate` to
 ## Install
 
 ```sh
-pnpm add -D prisma-guarddog
+pnpm add -D @flowchestra/prisma-guarddog
 ```
 
 Add the generator block to your Prisma schema:

@@ -21,7 +21,7 @@ Phase 2+ adds provider-specific packages (Supabase importer, FDW emitter), and P
 
 ## Decision
 
-Use a **Turborepo monorepo** from day 1. Each concern is a separately-published package under the `@prisma-guarddog/*` scope. The unscoped `prisma-guarddog` package is the user-facing CLI; it depends on `@prisma-guarddog/core` and the default emitters / importers.
+Use a **Turborepo monorepo** from day 1. Each concern is a separately-published package under the `@flowchestra/prisma-guarddog-*` scope. The unscoped `prisma-guarddog` package is the user-facing CLI; it depends on `@flowchestra/prisma-guarddog-core` and the default emitters / importers.
 
 ```
 prisma-guarddog/
@@ -31,7 +31,7 @@ prisma-guarddog/
   package.json                                ← root devDeps + scripts only
   docs/
   packages/
-    core/                                     ← @prisma-guarddog/core
+    core/                                     ← @flowchestra/prisma-guarddog-core
     emitter-postgres-rls/
     emitter-postgres-column-privileges/
     importer-prisma/

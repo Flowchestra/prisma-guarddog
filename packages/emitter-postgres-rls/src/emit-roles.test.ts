@@ -1,4 +1,4 @@
-import { defineDbRoles } from '@prisma-guarddog/core'
+import { defineDbRoles } from '@flowchestra/prisma-guarddog-core'
 import { describe, expect, it } from 'vitest'
 
 import { emitRoles } from './emit-roles.js'

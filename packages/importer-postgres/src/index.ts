@@ -1,5 +1,5 @@
 /**
- * `@prisma-guarddog/importer-postgres` — pg_policies + column-privileges importer.
+ * `@flowchestra/prisma-guarddog-importer-postgres` — pg_policies + column-privileges importer.
  *
  * Two-layer surface:
  *   - `readPgPolicies` / `readColumnPrivileges` — pure adapters that take a

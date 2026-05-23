@@ -1,6 +1,6 @@
 {
-  "name": "@prisma-guarddog/testing-postgres",
-  "version": "0.0.0",
+  "name": "@flowchestra/prisma-guarddog-testing-postgres",
+  "version": "0.1.0-alpha.0",
   "description": "Real-Postgres verification harness for prisma-guarddog: withDbRole, withClaims, assertion helpers",
   "license": "MIT",
   "repository": {
@@ -37,7 +37,7 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
-    "@prisma-guarddog/core": "workspace:*"
+    "@flowchestra/prisma-guarddog-core": "workspace:*"
   },
   "peerDependencies": {
     "@prisma/client": ">=6.0.0",
@@ -50,7 +50,7 @@
     "prisma": "^6.0.0"
   },
   "publishConfig": {
-    "access": "public",
+    "access": "restricted",
     "main": "./dist/index.cjs",
     "module": "./dist/index.mjs",
     "types": "./dist/index.d.mts",
@@ -60,6 +60,7 @@
         "import": "./dist/index.mjs",
         "require": "./dist/index.cjs"
       }
-    }
+    },
+    "registry": "https://npm.pkg.github.com"
   }
 }

@@ -14,15 +14,15 @@ Each package ships its own short README with install + usage + design pointers. 
 
 | Package | Purpose |
 | --- | --- |
-| [`@prisma-guarddog/core`](../packages/core/README.md) | DSL primitives, AST, Op union, compile + diff |
-| [`@prisma-guarddog/emitter-postgres-rls`](../packages/emitter-postgres-rls/README.md) | `Expr` → SQL; `PolicyAst` → CREATE POLICY; role lifecycle |
-| [`@prisma-guarddog/emitter-postgres-column-privileges`](../packages/emitter-postgres-column-privileges/README.md) | `ColumnPrivilegeAst` → GRANT/REVOKE |
+| [`@flowchestra/prisma-guarddog-core`](../packages/core/README.md) | DSL primitives, AST, Op union, compile + diff |
+| [`@flowchestra/prisma-guarddog-emitter-postgres-rls`](../packages/emitter-postgres-rls/README.md) | `Expr` → SQL; `PolicyAst` → CREATE POLICY; role lifecycle |
+| [`@flowchestra/prisma-guarddog-emitter-postgres-column-privileges`](../packages/emitter-postgres-column-privileges/README.md) | `ColumnPrivilegeAst` → GRANT/REVOKE |
 | [`prisma-guarddog`](../packages/cli/README.md) (CLI) | `migrate`, `check`, generator binary, `renderOps`, sidecar I/O |
-| [`@prisma-guarddog/importer-prisma`](../packages/importer-prisma/README.md) | Prisma DMMF readers + model-type codegen |
-| [`@prisma-guarddog/importer-postgres`](../packages/importer-postgres/README.md) | `pg_policies` → scaffold (`rawSql()` + `.todo()`) |
-| [`@prisma-guarddog/testing-postgres`](../packages/testing-postgres/README.md) | `withScenario` + assertion helpers (real-PG only) |
-| [`@prisma-guarddog/lint`](../packages/lint/README.md) | Coverage check |
-| [`@prisma-guarddog/preset-flowchestra`](../packages/preset-flowchestra/README.md) | Opinionated preset (reference for downstream presets) |
+| [`@flowchestra/prisma-guarddog-importer-prisma`](../packages/importer-prisma/README.md) | Prisma DMMF readers + model-type codegen |
+| [`@flowchestra/prisma-guarddog-importer-postgres`](../packages/importer-postgres/README.md) | `pg_policies` → scaffold (`rawSql()` + `.todo()`) |
+| [`@flowchestra/prisma-guarddog-testing-postgres`](../packages/testing-postgres/README.md) | `withScenario` + assertion helpers (real-PG only) |
+| [`@flowchestra/prisma-guarddog-lint`](../packages/lint/README.md) | Coverage check |
+| [`@flowchestra/prisma-guarddog-preset`](../packages/preset-flowchestra/README.md) | Opinionated preset (reference for downstream presets) |
 
 <!-- markdownlint-enable MD060 -->
 

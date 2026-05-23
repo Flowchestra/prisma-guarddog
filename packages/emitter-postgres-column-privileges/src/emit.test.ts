@@ -1,4 +1,4 @@
-import type { ColumnPrivilegeAst } from '@prisma-guarddog/core'
+import type { ColumnPrivilegeAst } from '@flowchestra/prisma-guarddog-core'
 import { describe, expect, it } from 'vitest'
 
 import { emitColumnPrivileges } from './emit.js'

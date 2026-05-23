@@ -1,5 +1,5 @@
 /**
- * `@prisma-guarddog/core` — policy compiler primitives.
+ * `@flowchestra/prisma-guarddog-core` — policy compiler primitives.
  *
  * Phase 1 surface: type-safe declarative primitives that produce typed AST
  * values consumed by emitters, importers, and the CLI.

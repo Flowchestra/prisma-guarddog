@@ -1,5 +1,5 @@
 /**
- * `@prisma-guarddog/emitter-postgres-column-privileges` — pure AST -> SQL
+ * `@flowchestra/prisma-guarddog-emitter-postgres-column-privileges` — pure AST -> SQL
  * transformer for Postgres column-level GRANT statements.
  *
  * Per ADR-0004, this emitter handles only STATIC role-based column

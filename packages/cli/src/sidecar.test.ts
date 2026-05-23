@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import type { Op } from '@prisma-guarddog/core'
+import type { Op } from '@flowchestra/prisma-guarddog-core'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { formatSidecar, readAllSidecarOps, replayMigrationsDir, SIDECAR_FILENAME, SIDECAR_VERSION } from './sidecar.js'

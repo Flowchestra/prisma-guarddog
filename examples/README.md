@@ -6,7 +6,7 @@ Working examples that exercise the whole compile + verify pipeline. Each example
 
 | Example | What it shows |
 |---|---|
-| [`flowchestra/`](./flowchestra) | Five representative production-shape policies (tenant-scoped, cascade-scoped, owner-OR-role, system-write-only, `noPolicy()` opt-out) authored on top of `@prisma-guarddog/preset-flowchestra`. Compile-pipeline tests run always; real-Postgres E2E tests run opt-in. |
+| [`flowchestra/`](./flowchestra) | Five representative production-shape policies (tenant-scoped, cascade-scoped, owner-OR-role, system-write-only, `noPolicy()` opt-out) authored on top of `@flowchestra/prisma-guarddog-preset`. Compile-pipeline tests run always; real-Postgres E2E tests run opt-in. |
 
 More examples will land as Phase 2 features ship (FDW table coverage, row-conditional masking, importer round-trips).
 
@@ -27,7 +27,7 @@ Each example follows the same shape:
 
 ```
 examples/<name>/
-├── package.json           # workspace package; depends on @prisma-guarddog/* via workspace:*
+├── package.json           # workspace package; depends on @flowchestra/prisma-guarddog-* via workspace:*
 ├── tsconfig.json
 ├── README.md              # what this example demonstrates
 ├── prisma/

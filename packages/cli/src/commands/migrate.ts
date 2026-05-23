@@ -26,7 +26,7 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
-import { compileToState, diffStates, type Guarddog, type Op, type State } from '@prisma-guarddog/core'
+import { compileToState, diffStates, type Guarddog, type Op, type State } from '@flowchestra/prisma-guarddog-core'
 import pc from 'picocolors'
 
 import type { ResolvedConfig } from '../config.js'

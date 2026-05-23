@@ -1,5 +1,5 @@
 /**
- * `@prisma-guarddog/testing-postgres` — RLS verification harness.
+ * `@flowchestra/prisma-guarddog-testing-postgres` — RLS verification harness.
  *
  * Real Postgres only (ADR-0013). Each scenario opens a transaction,
  * installs a test identity via `SET LOCAL ROLE` + claims, runs assertion

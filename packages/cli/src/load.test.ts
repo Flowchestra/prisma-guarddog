@@ -1,8 +1,8 @@
-import { defineAppRoles } from '@prisma-guarddog/core'
-import { defineClaims } from '@prisma-guarddog/core'
-import { defineDbRoles } from '@prisma-guarddog/core'
-import { defineResources } from '@prisma-guarddog/core'
-import { defineSchema } from '@prisma-guarddog/core'
+import { defineAppRoles } from '@flowchestra/prisma-guarddog-core'
+import { defineClaims } from '@flowchestra/prisma-guarddog-core'
+import { defineDbRoles } from '@flowchestra/prisma-guarddog-core'
+import { defineResources } from '@flowchestra/prisma-guarddog-core'
+import { defineSchema } from '@flowchestra/prisma-guarddog-core'
 import { describe, expect, it } from 'vitest'
 
 import { loadSchema, materializeLoadedSchema, SchemaLoadError, validateSchemaModule } from './load.js'
@@ -11,7 +11,7 @@ import { loadSchema, materializeLoadedSchema, SchemaLoadError, validateSchemaMod
  * NOTE on test scope: the tests below cover the pure validation +
  * materialization helpers directly. The full end-to-end `loadSchema` path
  * (which goes through jiti to import a real TypeScript file from disk and
- * resolve `@prisma-guarddog/core` from the temp dir) requires the workspace
+ * resolve `@flowchestra/prisma-guarddog-core` from the temp dir) requires the workspace
  * packages to be BUILT first — jiti delegates to Node's resolver for bare
  * imports, and Node won't load .ts targets named in package.json `exports`.
  * Once a `tsdown` build emits `dist/index.js` for each workspace package,

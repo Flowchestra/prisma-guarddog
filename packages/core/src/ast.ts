@@ -95,7 +95,7 @@ export interface PolicyAst {
 
 /**
  * Per-column, per-verb privilege grants. Compiles to `GRANT SELECT(col) ON
- * table TO role` / `REVOKE ...` DDL via `@prisma-guarddog/emitter-postgres-
+ * table TO role` / `REVOKE ...` DDL via `@flowchestra/prisma-guarddog-emitter-postgres-
  * column-privileges`. Role-based and **static** — independent of row content.
  *
  * Row-conditional field visibility (`.masks()` / `.projection()`) is a

@@ -1,6 +1,6 @@
 {
-  "name": "@prisma-guarddog/importer-prisma",
-  "version": "0.0.0",
+  "name": "@flowchestra/prisma-guarddog-importer-prisma",
+  "version": "0.1.0-alpha.0",
   "description": "Prisma DMMF importer for prisma-guarddog: coverage check and model scaffold generation",
   "license": "MIT",
   "repository": {
@@ -37,7 +37,7 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
-    "@prisma-guarddog/core": "workspace:*"
+    "@flowchestra/prisma-guarddog-core": "workspace:*"
   },
   "peerDependencies": {
     "@prisma/internals": ">=6.0.0",
@@ -51,7 +51,7 @@
     "@prisma/generator-helper": "^6.0.0"
   },
   "publishConfig": {
-    "access": "public",
+    "access": "restricted",
     "main": "./dist/index.cjs",
     "module": "./dist/index.mjs",
     "types": "./dist/index.d.mts",
@@ -61,6 +61,7 @@
         "import": "./dist/index.mjs",
         "require": "./dist/index.cjs"
       }
-    }
+    },
+    "registry": "https://npm.pkg.github.com"
   }
 }

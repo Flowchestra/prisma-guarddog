@@ -1,8 +1,8 @@
-# @prisma-guarddog/preset-flowchestra
+# @flowchestra/prisma-guarddog-preset
 
 Opinionated preset for Flowchestra: bundles the WorkOS JWT claim shape, the `app_user` / `app_system` dbRole pair, the canonical `tenant.*` / `workspace.*` / `workbench.*` appRole vocabulary, and the flat `Tenant → Workspace → Workbench` resource tree.
 
-If you are **not** Flowchestra, don't import this — compose your own by calling the primitives in `@prisma-guarddog/core` directly. This package exists as a working reference for what a downstream preset looks like; see [ADR-0011](../../docs/adr/0011-extractable-core-with-flowchestra-preset.md).
+If you are **not** Flowchestra, don't import this — compose your own by calling the primitives in `@flowchestra/prisma-guarddog-core` directly. This package exists as a working reference for what a downstream preset looks like; see [ADR-0011](../../docs/adr/0011-extractable-core-with-flowchestra-preset.md).
 
 ## What lives here
 
@@ -16,14 +16,14 @@ If you are **not** Flowchestra, don't import this — compose your own by callin
 ## Install
 
 ```sh
-pnpm add @prisma-guarddog/preset-flowchestra
+pnpm add @flowchestra/prisma-guarddog-preset
 ```
 
 ## 30-second usage
 
 ```ts
-import { col } from '@prisma-guarddog/core'
-import { createFlowchestraGuarddog } from '@prisma-guarddog/preset-flowchestra'
+import { col } from '@flowchestra/prisma-guarddog-core'
+import { createFlowchestraGuarddog } from '@flowchestra/prisma-guarddog-preset'
 
 const guard = createFlowchestraGuarddog()
 
@@ -36,13 +36,13 @@ guard
 Or compose just the pieces you want:
 
 ```ts
-import { defineSchema } from '@prisma-guarddog/core'
+import { defineSchema } from '@flowchestra/prisma-guarddog-core'
 import {
   flowchestraAppRoles,
   flowchestraClaims,
   flowchestraDbRoles,
   flowchestraResources,
-} from '@prisma-guarddog/preset-flowchestra'
+} from '@flowchestra/prisma-guarddog-preset'
 
 export default defineSchema({
   claims: flowchestraClaims({ accessor: 'auth.claims' }),

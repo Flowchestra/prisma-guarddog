@@ -23,7 +23,7 @@ Policies are authored in TypeScript. There is no `.zmodel`-style file, no HCL, n
 
 ```ts
 import { Prisma } from '@/generated/prisma';
-import { col } from '@prisma-guarddog/core';
+import { col } from '@flowchestra/prisma-guarddog-core';
 
 guard.model(Prisma.ModelName.Workbench)
   .policy('app_user')

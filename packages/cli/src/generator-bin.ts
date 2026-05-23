@@ -10,7 +10,7 @@
  *   onManifest   announce the generator name + default output path.
  *   onGenerate   receive the DMMF + invoke our codegen.
  *
- * The actual codegen logic lives in `@prisma-guarddog/importer-prisma`'s
+ * The actual codegen logic lives in `@flowchestra/prisma-guarddog-importer-prisma`'s
  * `runGuarddogGenerator` — same routine the upcoming `prisma-guarddog
  * generate` subcommand will reuse for direct CLI invocation.
  *
@@ -25,7 +25,7 @@
  * own client.
  */
 
-import { runGuarddogGenerator } from '@prisma-guarddog/importer-prisma'
+import { runGuarddogGenerator } from '@flowchestra/prisma-guarddog-importer-prisma'
 import { generatorHandler } from '@prisma/generator-helper'
 
 generatorHandler({

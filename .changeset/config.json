@@ -1,13 +1,10 @@
 {
   "$schema": "https://unpkg.com/@changesets/config@3.0.0/schema.json",
-  "changelog": [
-    "@changesets/changelog-github",
-    { "repo": "Flowchestra/prisma-guarddog" }
-  ],
+  "changelog": ["@changesets/changelog-github", { "repo": "Flowchestra/prisma-guarddog" }],
   "commit": false,
   "fixed": [],
   "linked": [],
-  "access": "public",
+  "access": "restricted",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
   "ignore": [],

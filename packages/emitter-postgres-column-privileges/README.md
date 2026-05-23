@@ -1,4 +1,4 @@
-# @prisma-guarddog/emitter-postgres-column-privileges
+# @flowchestra/prisma-guarddog-emitter-postgres-column-privileges
 
 Pure AST → Postgres SQL transformer for **static, role-based** column-level GRANT/REVOKE.
 
@@ -12,7 +12,7 @@ Row-conditional field masking (`.masks()` / `.projection()`) is a distinct Phase
 ## Install
 
 ```sh
-pnpm add @prisma-guarddog/emitter-postgres-column-privileges
+pnpm add @flowchestra/prisma-guarddog-emitter-postgres-column-privileges
 ```
 
 Like the RLS emitter, you usually do not need to import this directly — the CLI's `renderOps` dispatches to it for `grant-column` / `revoke-column` ops.
@@ -20,7 +20,7 @@ Like the RLS emitter, you usually do not need to import this directly — the CL
 ## 30-second usage
 
 ```ts
-import { emitColumnPrivileges } from '@prisma-guarddog/emitter-postgres-column-privileges'
+import { emitColumnPrivileges } from '@flowchestra/prisma-guarddog-emitter-postgres-column-privileges'
 
 // In your guarddog.ts:
 guard.model('File').columnPrivileges({

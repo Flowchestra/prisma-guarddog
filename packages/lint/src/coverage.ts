@@ -24,7 +24,7 @@
  * Pure function — no I/O, no DB.
  */
 
-import type { GuarddogLike } from '@prisma-guarddog/core'
+import type { GuarddogLike } from '@flowchestra/prisma-guarddog-core'
 
 export type LintSeverity = 'error' | 'warning'
 
@@ -39,7 +39,7 @@ export interface LintInput {
   readonly guard: GuarddogLike
   /**
    * The Prisma model list — typically projected from `dmmf.datamodel.models`
-   * by `@prisma-guarddog/importer-prisma`'s readers. Only the `name`
+   * by `@flowchestra/prisma-guarddog-importer-prisma`'s readers. Only the `name`
    * matters for coverage; `tableName` is unused here (the resolver lives
    * in core / emitters).
    */

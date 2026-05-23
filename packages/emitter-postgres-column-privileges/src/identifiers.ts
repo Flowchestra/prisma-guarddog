@@ -1,7 +1,7 @@
 /**
  * Postgres identifier quoting and table-name resolution.
  *
- * Intentionally duplicated from `@prisma-guarddog/emitter-postgres-rls`
+ * Intentionally duplicated from `@flowchestra/prisma-guarddog-emitter-postgres-rls`
  * rather than cross-imported. The two emitters share these utilities but
  * not enough else to warrant a third "postgres-shared" package — ~30 LOC
  * of duplication is the right answer until a third dialect emitter joins.

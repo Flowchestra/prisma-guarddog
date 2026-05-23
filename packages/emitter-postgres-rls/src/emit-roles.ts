@@ -22,7 +22,7 @@
  * `defineDbRoles({ app_system: { inherits: ['app_user'] } })`.
  */
 
-import type { DbRolesDefinition } from '@prisma-guarddog/core'
+import type { DbRolesDefinition } from '@flowchestra/prisma-guarddog-core'
 
 import { quoteIdent, quoteString } from './identifiers.js'
 

@@ -20,7 +20,7 @@ export interface PrismaModel {
   /**
    * Resolved table name. Equal to `name` unless overridden by `@@map`.
    * Drives the table-name resolver in the RLS emitter — see
-   * `@prisma-guarddog/emitter-postgres-rls`'s `defaultTableResolver`.
+   * `@flowchestra/prisma-guarddog-emitter-postgres-rls`'s `defaultTableResolver`.
    */
   readonly tableName: string
 }

@@ -1,12 +1,12 @@
 /**
- * `@prisma-guarddog/preset-flowchestra` — opinionated preset for Flowchestra.
+ * `@flowchestra/prisma-guarddog-preset` — opinionated preset for Flowchestra.
  *
  * Bundles the WorkOS JWT claim shape, the `app_user` / `app_system` dbRole
  * pair, the canonical `org.*` / `workspace.*` / `workbench.*` appRoles, and
  * the `Tenant -> Workspace -> Workbench` resource tree into one factory.
  *
  * If you are not Flowchestra, do not import this — compose your own preset
- * by calling the primitives in `@prisma-guarddog/core` directly. See
+ * by calling the primitives in `@flowchestra/prisma-guarddog-core` directly. See
  * ADR-0011 for the extraction policy that keeps `core` engagement-neutral.
  *
  * Three usage shapes:
@@ -31,7 +31,7 @@ import {
   defineResources,
   Guarddog,
   type ResourceTreeDefinition,
-} from '@prisma-guarddog/core'
+} from '@flowchestra/prisma-guarddog-core'
 
 export const FLOWCHESTRA_DEFAULT_CLAIMS_ACCESSOR = 'request.jwt.claims'
 

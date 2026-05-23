@@ -17,7 +17,7 @@ import type {
   ClaimsShape,
   Expr,
   ResourceGrantsDefinition,
-} from '@prisma-guarddog/core'
+} from '@flowchestra/prisma-guarddog-core'
 
 import { formatLiteral, quoteIdent, quoteString } from './identifiers.js'
 

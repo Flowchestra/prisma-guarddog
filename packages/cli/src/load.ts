@@ -15,7 +15,7 @@
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-import { Guarddog, materializeSchema, type ClaimsShape, type SchemaDefinition } from '@prisma-guarddog/core'
+import { Guarddog, materializeSchema, type ClaimsShape, type SchemaDefinition } from '@flowchestra/prisma-guarddog-core'
 import { createJiti } from 'jiti'
 
 export class SchemaLoadError extends Error {

@@ -1,5 +1,5 @@
-import { defineClaims } from '@prisma-guarddog/core'
-import type { ClaimsDefinition, Expr, LiteralValue } from '@prisma-guarddog/core'
+import { defineClaims } from '@flowchestra/prisma-guarddog-core'
+import type { ClaimsDefinition, Expr, LiteralValue } from '@flowchestra/prisma-guarddog-core'
 import { describe, expect, it } from 'vitest'
 
 import {

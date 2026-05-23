@@ -20,7 +20,7 @@ emitted `CREATE POLICY`. They are the only one of the three layers that maps
 to a Postgres-native object.
 
 Authored via `defineDbRoles({...})`. Emitted as DDL by
-`@prisma-guarddog/emitter-postgres-rls`'s `emitRoles()`.
+`@flowchestra/prisma-guarddog-emitter-postgres-rls`'s `emitRoles()`.
 
 **dbRole inheritance** is structural inheritance between Postgres roles —
 emitted as `GRANT app_user TO app_system` (the membership grant). This is

@@ -1,4 +1,4 @@
-# @prisma-guarddog/testing-postgres
+# @flowchestra/prisma-guarddog-testing-postgres
 
 Real-Postgres verification harness for RLS policies.
 
@@ -16,14 +16,14 @@ Per [ADR-0013](../../docs/adr/0013-real-postgres-required-for-tests.md) there is
 ## Install
 
 ```sh
-pnpm add -D @prisma-guarddog/testing-postgres pg
+pnpm add -D @flowchestra/prisma-guarddog-testing-postgres pg
 ```
 
 ## 30-second usage
 
 ```ts
 import { Client } from 'pg'
-import { assertAllowed, assertDenied, withScenario } from '@prisma-guarddog/testing-postgres'
+import { assertAllowed, assertDenied, withScenario } from '@flowchestra/prisma-guarddog-testing-postgres'
 
 const client = new Client({ connectionString: process.env.DATABASE_URL })
 await client.connect()

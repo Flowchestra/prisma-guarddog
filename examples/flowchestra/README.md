@@ -2,7 +2,7 @@
 
 End-to-end proof of `prisma-guarddog`: five representative
 Flowchestra-shape models with full policy authoring on top of
-`@prisma-guarddog/preset-flowchestra`.
+`@flowchestra/prisma-guarddog-preset`.
 
 ## Models
 

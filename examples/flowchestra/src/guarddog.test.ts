@@ -15,9 +15,9 @@
  * surface in CI without needing a DB.
  */
 
-import { applyOps, compileToOps, compileToState, empty, type Op } from '@prisma-guarddog/core'
-import { lintCoverage } from '@prisma-guarddog/lint'
-import { renderOps } from 'prisma-guarddog'
+import { renderOps } from '@flowchestra/prisma-guarddog'
+import { applyOps, compileToOps, compileToState, empty, type Op } from '@flowchestra/prisma-guarddog-core'
+import { lintCoverage } from '@flowchestra/prisma-guarddog-lint'
 import { describe, expect, it } from 'vitest'
 
 import { buildExampleGuarddog } from './guarddog.js'

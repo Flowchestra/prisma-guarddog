@@ -35,7 +35,7 @@ Three phases, with hard boundaries. Items outside the listed phases are either d
 
 ### Phase 3 — Identity provider integration
 
-- WorkOS FGA bridge (`@prisma-guarddog/fga-workos`)
+- WorkOS FGA bridge (`@flowchestra/prisma-guarddog-fga-workos`)
 - Translates WorkOS actions + composable roles → guarddog `appRoles` and grant predicates
 - Emits policies that call `app.*` functions resolving FGA relationships at query time
 

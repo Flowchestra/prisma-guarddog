@@ -5,7 +5,7 @@
  * This is the bridge between core's intent-level Op union and the dialect
  * emitter packages. Each Op kind maps to a small bit of SQL — for
  * `create-policy` we delegate the predicate compilation to
- * `@prisma-guarddog/emitter-postgres-rls`'s `compileExpr`; the surrounding
+ * `@flowchestra/prisma-guarddog-emitter-postgres-rls`'s `compileExpr`; the surrounding
  * DROP/CREATE scaffold is inlined here because it's trivial and avoids
  * forcing the per-policy emitter API to support Op input.
  *
@@ -23,7 +23,7 @@ import type {
   PolicyOpRecord,
   ResourceGrantsDefinition,
   Verb,
-} from '@prisma-guarddog/core'
+} from '@flowchestra/prisma-guarddog-core'
 import {
   compileExpr,
   type ExprCompileCtx,
@@ -33,7 +33,7 @@ import {
   type IsOwnerCompiler,
   quoteIdent,
   quoteString,
-} from '@prisma-guarddog/emitter-postgres-rls'
+} from '@flowchestra/prisma-guarddog-emitter-postgres-rls'
 
 export interface RenderContext {
   readonly claims: ClaimsDefinition

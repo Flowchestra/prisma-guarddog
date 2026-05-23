@@ -20,11 +20,11 @@
  *   GUARDDOG_E2E=1 GUARDDOG_DATABASE_URL=postgres://... pnpm --filter example-flowchestra test:e2e
  */
 
-import { compileToOps } from '@prisma-guarddog/core'
-import { assertAllowed, assertDenied, withScenario } from '@prisma-guarddog/testing-postgres'
+import { renderOps } from '@flowchestra/prisma-guarddog'
+import { compileToOps } from '@flowchestra/prisma-guarddog-core'
+import { assertAllowed, assertDenied, withScenario } from '@flowchestra/prisma-guarddog-testing-postgres'
 // eslint-disable-next-line import/no-extraneous-dependencies -- pg is a devDependency of this example package.
 import { Client } from 'pg'
-import { renderOps } from 'prisma-guarddog'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { buildExampleGuarddog } from './guarddog.js'

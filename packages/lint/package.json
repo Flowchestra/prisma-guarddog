@@ -1,6 +1,6 @@
 {
-  "name": "@prisma-guarddog/lint",
-  "version": "0.0.0",
+  "name": "@flowchestra/prisma-guarddog-lint",
+  "version": "0.1.0-alpha.0",
   "description": "Coverage lint for prisma-guarddog: every Prisma model must have policy(), noPolicy(), or importedRawPolicy()",
   "license": "MIT",
   "repository": {
@@ -37,8 +37,8 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
-    "@prisma-guarddog/core": "workspace:*",
-    "@prisma-guarddog/importer-prisma": "workspace:*"
+    "@flowchestra/prisma-guarddog-core": "workspace:*",
+    "@flowchestra/prisma-guarddog-importer-prisma": "workspace:*"
   },
   "peerDependencies": {
     "@prisma/internals": ">=6.0.0"
@@ -47,7 +47,7 @@
     "@prisma/internals": "^6.0.0"
   },
   "publishConfig": {
-    "access": "public",
+    "access": "restricted",
     "main": "./dist/index.cjs",
     "module": "./dist/index.mjs",
     "types": "./dist/index.d.mts",
@@ -57,6 +57,7 @@
         "import": "./dist/index.mjs",
         "require": "./dist/index.cjs"
       }
-    }
+    },
+    "registry": "https://npm.pkg.github.com"
   }
 }

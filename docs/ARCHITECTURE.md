@@ -6,7 +6,7 @@
 
 ```
                 ┌─────────────────────────────────────────────────────────────┐
-                │                  @prisma-guarddog/core                       │
+                │                  @flowchestra/prisma-guarddog-core                       │
                 │  defineSchema · defineClaims · defineDbRoles ·               │
                 │  defineAppRoles · defineResources · defineResourceGrants     │
                 │  Guarddog · compileToOps · diffStates · applyOps             │
@@ -40,7 +40,7 @@
                               │ forward replay on next migrate
                               │
             ┌─────────────────┴──────────────────┐
-            │       @prisma-guarddog/            │
+            │       @flowchestra/prisma-guarddog-            │
             │       preset-flowchestra           │
             │ createFlowchestraGuarddog()        │
             │ flowchestraClaims / DbRoles /      │
@@ -49,7 +49,7 @@
 
   Verification (orthogonal to the compile path)
             ┌────────────────────────────────────┐
-            │   @prisma-guarddog/testing-postgres │
+            │   @flowchestra/prisma-guarddog-testing-postgres │
             │ withScenario · assertAllowed /     │
             │ assertDenied / assertVisibleRows / │
             │ assertHiddenColumns                │
@@ -76,15 +76,15 @@
 
 | Package | Path step | Role |
 |---|---|---|
-| [`@prisma-guarddog/core`](../packages/core) | 1–4 | DSL primitives, AST, Op union, compile + diff |
-| [`@prisma-guarddog/emitter-postgres-rls`](../packages/emitter-postgres-rls) | 5 | `Expr` → SQL fragments; `PolicyAst` → idempotent CREATE POLICY |
-| [`@prisma-guarddog/emitter-postgres-column-privileges`](../packages/emitter-postgres-column-privileges) | 5 | `ColumnPrivilegeAst` → GRANT/REVOKE |
+| [`@flowchestra/prisma-guarddog-core`](../packages/core) | 1–4 | DSL primitives, AST, Op union, compile + diff |
+| [`@flowchestra/prisma-guarddog-emitter-postgres-rls`](../packages/emitter-postgres-rls) | 5 | `Expr` → SQL fragments; `PolicyAst` → idempotent CREATE POLICY |
+| [`@flowchestra/prisma-guarddog-emitter-postgres-column-privileges`](../packages/emitter-postgres-column-privileges) | 5 | `ColumnPrivilegeAst` → GRANT/REVOKE |
 | [`prisma-guarddog`](../packages/cli) (CLI) | 2, 5, 6 | jiti loader, `renderOps`, `migrate` / `check` subcommands, Prisma generator binary |
-| [`@prisma-guarddog/importer-prisma`](../packages/importer-prisma) | side | Prisma DMMF readers + model-type codegen (autocomplete) |
-| [`@prisma-guarddog/importer-postgres`](../packages/importer-postgres) | side | `pg_policies` → `rawSql() + .todo()` scaffold (ADR-0012) |
-| [`@prisma-guarddog/testing-postgres`](../packages/testing-postgres) | 7 | `withScenario` + assertion helpers |
-| [`@prisma-guarddog/lint`](../packages/lint) | side | Coverage check: every Prisma model has a policy / polymorphic / noPolicy |
-| [`@prisma-guarddog/preset-flowchestra`](../packages/preset-flowchestra) | 1 | Opinionated preset (claims, roles, resources) — example of a downstream preset |
+| [`@flowchestra/prisma-guarddog-importer-prisma`](../packages/importer-prisma) | side | Prisma DMMF readers + model-type codegen (autocomplete) |
+| [`@flowchestra/prisma-guarddog-importer-postgres`](../packages/importer-postgres) | side | `pg_policies` → `rawSql() + .todo()` scaffold (ADR-0012) |
+| [`@flowchestra/prisma-guarddog-testing-postgres`](../packages/testing-postgres) | 7 | `withScenario` + assertion helpers |
+| [`@flowchestra/prisma-guarddog-lint`](../packages/lint) | side | Coverage check: every Prisma model has a policy / polymorphic / noPolicy |
+| [`@flowchestra/prisma-guarddog-preset`](../packages/preset-flowchestra) | 1 | Opinionated preset (claims, roles, resources) — example of a downstream preset |
 
 The dependency graph fans out from `core`. Every non-CLI package depends only on `core` (plus, in the emitter case, dialect-specific helpers). The CLI is the only package that depends on multiple emitter packages; this is intentional — `renderOps` is the dispatcher.
 

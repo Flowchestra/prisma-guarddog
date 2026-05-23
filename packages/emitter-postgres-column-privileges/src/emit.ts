@@ -16,7 +16,7 @@
  * themselves.
  */
 
-import type { ColumnPrivilegeAst, ColumnPrivilegeGrant } from '@prisma-guarddog/core'
+import type { ColumnPrivilegeAst, ColumnPrivilegeGrant } from '@flowchestra/prisma-guarddog-core'
 
 import { quoteIdent, resolveTableName } from './identifiers.js'
 
@@ -25,7 +25,7 @@ export interface EmitContext {
    * Override the Prisma model -> table name mapping. Falls back to a
    * default CamelCase -> snake_case resolver. Consumers with @@map()
    * directives should plug in a DMMF-bridged resolver (see
-   * `@prisma-guarddog/importer-prisma`'s `ModelTables`).
+   * `@flowchestra/prisma-guarddog-importer-prisma`'s `ModelTables`).
    */
   readonly resolveTable?: (modelName: string) => string
 }

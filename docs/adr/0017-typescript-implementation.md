@@ -32,7 +32,7 @@ A future Phase 3+ NAPI escape hatch is permitted: individual emitter packages ma
 - The DSL — TypeScript typed against Prisma model fields — is consumed natively. No serialization boundary.
 - Prisma DMMF is read directly via `@prisma/internals`. No shelling out, no schema reparsing.
 - Test integration lives inside the consumer's existing TS test runner. No external process to coordinate.
-- Distribution path is identical to every other tool the consumer already uses: `pnpm add prisma-guarddog`.
+- Distribution path is identical to every other tool the consumer already uses: `pnpm add @flowchestra/prisma-guarddog`.
 - No cross-platform binary builds, no `postinstall` curl-pipe-bash, no platform-specific bundles.
 
 **Negative:**

@@ -1,4 +1,4 @@
-# @prisma-guarddog/lint
+# @flowchestra/prisma-guarddog-lint
 
 Coverage check: catches "I added a Prisma model and forgot to write a policy" — the exact class of bug RLS itself can't help with if the model has no policy at all.
 
@@ -16,14 +16,14 @@ Output is sorted by `(model, severity, kind)` so PR diffs stay deterministic.
 ## Install
 
 ```sh
-pnpm add -D @prisma-guarddog/lint
+pnpm add -D @flowchestra/prisma-guarddog-lint
 ```
 
 ## 30-second usage
 
 ```ts
-import { materializeSchema } from '@prisma-guarddog/core'
-import { lintCoverage } from '@prisma-guarddog/lint'
+import { materializeSchema } from '@flowchestra/prisma-guarddog-core'
+import { lintCoverage } from '@flowchestra/prisma-guarddog-lint'
 import schema from './prisma/guarddog.ts'
 
 const guard = materializeSchema(schema)
@@ -33,7 +33,7 @@ const report = lintCoverage({
     { name: 'Workspace' },
     { name: 'Workbench' },
     { name: 'File' },
-    // …or generate this list from your DMMF via @prisma-guarddog/importer-prisma
+    // …or generate this list from your DMMF via @flowchestra/prisma-guarddog-importer-prisma
   ],
 })
 
@@ -50,4 +50,4 @@ The CLI does not yet wire this in as a subcommand — call it programmatically f
 ## Where to read next
 
 - [`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) — where lint fits relative to the importer and CLI
-- [`@prisma-guarddog/importer-prisma`](../importer-prisma) — generate the `prismaModels` argument from DMMF
+- [`@flowchestra/prisma-guarddog-importer-prisma`](../importer-prisma) — generate the `prismaModels` argument from DMMF

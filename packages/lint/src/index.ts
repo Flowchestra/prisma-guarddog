@@ -1,5 +1,5 @@
 /**
- * `@prisma-guarddog/lint` — coverage check.
+ * `@flowchestra/prisma-guarddog-lint` — coverage check.
  *
  * `lintCoverage` cross-references a Guarddog instance against the consumer's
  * Prisma model list and reports missing policies plus work-in-progress

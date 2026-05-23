@@ -9,7 +9,7 @@ import {
   defineResources,
   defineSchema,
   materializeSchema,
-} from '@prisma-guarddog/core'
+} from '@flowchestra/prisma-guarddog-core'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { resolveConfig } from '../config.js'

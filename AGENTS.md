@@ -33,7 +33,7 @@ For the full architectural framing, decision log, and roadmap, read in order:
 
 ## Repo layout (Turborepo)
 
-This is a Turborepo monorepo. Source code lives in `packages/*`, each published independently to npm under the `@prisma-guarddog/*` scope. The unscoped `prisma-guarddog` CLI is the user-facing entrypoint.
+This is a Turborepo monorepo. Source code lives in `packages/*`, each published independently to npm under the `@flowchestra/prisma-guarddog-*` scope. The unscoped `prisma-guarddog` CLI is the user-facing entrypoint.
 
 See [ADR-0016](./docs/adr/0016-turborepo-monorepo.md) for the package split rationale.
 
@@ -50,7 +50,7 @@ See [ADR-0016](./docs/adr/0016-turborepo-monorepo.md) for the package split rati
 ## How to contribute
 
 1. Read the relevant ADRs before proposing architectural changes.
-2. Every new Prisma model in a consumer's policies must have `.policy()`, `.noPolicy()`, or `importedRawPolicy()` — enforced by `@prisma-guarddog/lint`.
+2. Every new Prisma model in a consumer's policies must have `.policy()`, `.noPolicy()`, or `importedRawPolicy()` — enforced by `@flowchestra/prisma-guarddog-lint`.
 3. All emitted DDL must be idempotent (see [ADR-0008](./docs/adr/0008-idempotent-ddl-emission.md)).
 4. All emitted DDL must be self-contained — nothing the consumer has to maintain by hand sits between the schema file and a working database.
 5. User-facing example code should use the schema file form (`defineSchema({...})` → default export), not raw `new Guarddog({...})` ([ADR-0018](./docs/adr/0018-schema-file-as-primary-interface.md)).
@@ -60,4 +60,4 @@ See [ADR-0016](./docs/adr/0016-turborepo-monorepo.md) for the package split rati
 
 - Verify each finding against the current code before proposing a fix.
 - Don't be over-eager with edits; answer the question when that's what the user wants.
-- Prefer barrel imports from `@prisma-guarddog/*` packages over deep file paths.
+- Prefer barrel imports from `@flowchestra/prisma-guarddog-*` packages over deep file paths.

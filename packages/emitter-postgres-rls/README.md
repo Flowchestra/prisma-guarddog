@@ -1,4 +1,4 @@
-# @prisma-guarddog/emitter-postgres-rls
+# @flowchestra/prisma-guarddog-emitter-postgres-rls
 
 Pure AST → Postgres SQL transformer for RLS policies and role lifecycle. No I/O, no DB connection.
 
@@ -13,7 +13,7 @@ Pure AST → Postgres SQL transformer for RLS policies and role lifecycle. No I/
 ## Install
 
 ```sh
-pnpm add @prisma-guarddog/emitter-postgres-rls
+pnpm add @flowchestra/prisma-guarddog-emitter-postgres-rls
 ```
 
 You usually do **not** import this directly — the CLI's `renderOps` already orchestrates per-op rendering. Reach for the package only if you're building a custom migration writer or a different dialect emitter.
@@ -21,7 +21,7 @@ You usually do **not** import this directly — the CLI's `renderOps` already or
 ## 30-second usage
 
 ```ts
-import { compileExpr, emitPolicy, emitRoles } from '@prisma-guarddog/emitter-postgres-rls'
+import { compileExpr, emitPolicy, emitRoles } from '@flowchestra/prisma-guarddog-emitter-postgres-rls'
 
 const rolesDdl = emitRoles(guard.config.dbRoles) // CREATE ROLE … DO blocks
 const policyDdl = emitPolicy(policy, {

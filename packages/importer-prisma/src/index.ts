@@ -1,5 +1,5 @@
 /**
- * `@prisma-guarddog/importer-prisma` — Prisma DMMF importer + generator
+ * `@flowchestra/prisma-guarddog-importer-prisma` — Prisma DMMF importer + generator
  * handler.
  *
  * Three responsibilities:

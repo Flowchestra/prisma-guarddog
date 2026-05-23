@@ -6,8 +6,8 @@ import {
   defineResources,
   empty,
   Guarddog,
-} from '@prisma-guarddog/core'
-import { col } from '@prisma-guarddog/core'
+} from '@flowchestra/prisma-guarddog-core'
+import { col } from '@flowchestra/prisma-guarddog-core'
 import { describe, expect, it } from 'vitest'
 
 import { planMigrate } from './migrate.js'

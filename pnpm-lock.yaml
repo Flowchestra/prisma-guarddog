@@ -56,21 +56,21 @@ importers:
 
   examples/flowchestra:
     dependencies:
-      '@prisma-guarddog/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@prisma-guarddog/lint':
-        specifier: workspace:*
-        version: link:../../packages/lint
-      '@prisma-guarddog/preset-flowchestra':
-        specifier: workspace:*
-        version: link:../../packages/preset-flowchestra
-      '@prisma-guarddog/testing-postgres':
-        specifier: workspace:*
-        version: link:../../packages/testing-postgres
-      prisma-guarddog:
+      '@flowchestra/prisma-guarddog':
         specifier: workspace:*
         version: link:../../packages/cli
+      '@flowchestra/prisma-guarddog-core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@flowchestra/prisma-guarddog-lint':
+        specifier: workspace:*
+        version: link:../../packages/lint
+      '@flowchestra/prisma-guarddog-preset':
+        specifier: workspace:*
+        version: link:../../packages/preset-flowchestra
+      '@flowchestra/prisma-guarddog-testing-postgres':
+        specifier: workspace:*
+        version: link:../../packages/testing-postgres
     devDependencies:
       '@types/node':
         specifier: ^22.10.0
@@ -84,22 +84,22 @@ importers:
 
   packages/cli:
     dependencies:
-      '@prisma-guarddog/core':
+      '@flowchestra/prisma-guarddog-core':
         specifier: workspace:*
         version: link:../core
-      '@prisma-guarddog/emitter-postgres-column-privileges':
+      '@flowchestra/prisma-guarddog-emitter-postgres-column-privileges':
         specifier: workspace:*
         version: link:../emitter-postgres-column-privileges
-      '@prisma-guarddog/emitter-postgres-rls':
+      '@flowchestra/prisma-guarddog-emitter-postgres-rls':
         specifier: workspace:*
         version: link:../emitter-postgres-rls
-      '@prisma-guarddog/importer-postgres':
+      '@flowchestra/prisma-guarddog-importer-postgres':
         specifier: workspace:*
         version: link:../importer-postgres
-      '@prisma-guarddog/importer-prisma':
+      '@flowchestra/prisma-guarddog-importer-prisma':
         specifier: workspace:*
         version: link:../importer-prisma
-      '@prisma-guarddog/lint':
+      '@flowchestra/prisma-guarddog-lint':
         specifier: workspace:*
         version: link:../lint
       '@prisma/generator-helper':
@@ -136,19 +136,19 @@ importers:
 
   packages/emitter-postgres-column-privileges:
     dependencies:
-      '@prisma-guarddog/core':
+      '@flowchestra/prisma-guarddog-core':
         specifier: workspace:*
         version: link:../core
 
   packages/emitter-postgres-rls:
     dependencies:
-      '@prisma-guarddog/core':
+      '@flowchestra/prisma-guarddog-core':
         specifier: workspace:*
         version: link:../core
 
   packages/importer-postgres:
     dependencies:
-      '@prisma-guarddog/core':
+      '@flowchestra/prisma-guarddog-core':
         specifier: workspace:*
         version: link:../core
     devDependencies:
@@ -161,7 +161,7 @@ importers:
 
   packages/importer-prisma:
     dependencies:
-      '@prisma-guarddog/core':
+      '@flowchestra/prisma-guarddog-core':
         specifier: workspace:*
         version: link:../core
     devDependencies:
@@ -183,10 +183,10 @@ importers:
 
   packages/lint:
     dependencies:
-      '@prisma-guarddog/core':
+      '@flowchestra/prisma-guarddog-core':
         specifier: workspace:*
         version: link:../core
-      '@prisma-guarddog/importer-prisma':
+      '@flowchestra/prisma-guarddog-importer-prisma':
         specifier: workspace:*
         version: link:../importer-prisma
     devDependencies:
@@ -196,7 +196,7 @@ importers:
 
   packages/preset-flowchestra:
     dependencies:
-      '@prisma-guarddog/core':
+      '@flowchestra/prisma-guarddog-core':
         specifier: workspace:*
         version: link:../core
     devDependencies:
@@ -209,7 +209,7 @@ importers:
 
   packages/testing-postgres:
     dependencies:
-      '@prisma-guarddog/core':
+      '@flowchestra/prisma-guarddog-core':
         specifier: workspace:*
         version: link:../core
     devDependencies:

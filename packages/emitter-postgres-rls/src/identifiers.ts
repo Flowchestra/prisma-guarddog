@@ -3,7 +3,7 @@
  * Pure functions. No I/O.
  */
 
-import type { LiteralValue } from '@prisma-guarddog/core'
+import type { LiteralValue } from '@flowchestra/prisma-guarddog-core'
 
 /**
  * Quote a Postgres identifier (table name, column name, role name, policy

@@ -1,6 +1,6 @@
 {
-  "name": "prisma-guarddog",
-  "version": "0.0.0",
+  "name": "@flowchestra/prisma-guarddog",
+  "version": "0.1.0-alpha.0",
   "description": "CLI for prisma-guarddog: emit, diff, migrate, import",
   "license": "MIT",
   "repository": {
@@ -43,12 +43,12 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
-    "@prisma-guarddog/core": "workspace:*",
-    "@prisma-guarddog/emitter-postgres-rls": "workspace:*",
-    "@prisma-guarddog/emitter-postgres-column-privileges": "workspace:*",
-    "@prisma-guarddog/importer-prisma": "workspace:*",
-    "@prisma-guarddog/importer-postgres": "workspace:*",
-    "@prisma-guarddog/lint": "workspace:*",
+    "@flowchestra/prisma-guarddog-core": "workspace:*",
+    "@flowchestra/prisma-guarddog-emitter-postgres-rls": "workspace:*",
+    "@flowchestra/prisma-guarddog-emitter-postgres-column-privileges": "workspace:*",
+    "@flowchestra/prisma-guarddog-importer-prisma": "workspace:*",
+    "@flowchestra/prisma-guarddog-importer-postgres": "workspace:*",
+    "@flowchestra/prisma-guarddog-lint": "workspace:*",
     "commander": "^13.0.0",
     "jiti": "^2.5.0",
     "picocolors": "^1.1.1",
@@ -64,7 +64,7 @@
     "prisma": "^6.0.0"
   },
   "publishConfig": {
-    "access": "public",
+    "access": "restricted",
     "main": "./dist/index.cjs",
     "module": "./dist/index.mjs",
     "types": "./dist/index.d.mts",
@@ -79,6 +79,7 @@
       "guarddog": "./dist/bin.cjs",
       "prisma-guarddog": "./dist/bin.cjs",
       "prisma-guarddog-generator": "./dist/generator-bin.cjs"
-    }
+    },
+    "registry": "https://npm.pkg.github.com"
   }
 }

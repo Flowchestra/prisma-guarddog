@@ -14,14 +14,14 @@ Guarddog originated as a Flowchestra-internal need. The threat model, role hiera
 
 Build an **extractable core** with a **Flowchestra preset**:
 
-- The core (`@prisma-guarddog/core`) is generic. It does not import or reference Flowchestra-specific names. Roles, claim shape, function-call hooks, and `resources` topology are inputs, not built-ins.
-- A separate package (`@prisma-guarddog/preset-flowchestra`) carries the Flowchestra-specific defaults: WorkOS claim shape, role inheritance, `app.*` function bindings, conventional resource tree. Exposes `createFlowchestraGuarddog({ prisma, claimsAccessor })`.
+- The core (`@flowchestra/prisma-guarddog-core`) is generic. It does not import or reference Flowchestra-specific names. Roles, claim shape, function-call hooks, and `resources` topology are inputs, not built-ins.
+- A separate package (`@flowchestra/prisma-guarddog-preset`) carries the Flowchestra-specific defaults: WorkOS claim shape, role inheritance, `app.*` function bindings, conventional resource tree. Exposes `createFlowchestraGuarddog({ prisma, claimsAccessor })`.
 
 Internal-first authoring; not OSS-grade ergonomics on day 1. The preset proves the public API is sufficient — if Flowchestra's claim graph cannot be expressed through public APIs, the public APIs are wrong.
 
 ```ts
 // Flowchestra consumer:
-import { createFlowchestraGuarddog } from '@prisma-guarddog/preset-flowchestra';
+import { createFlowchestraGuarddog } from '@flowchestra/prisma-guarddog-preset';
 import { Prisma } from '@/generated/prisma';
 
 const guard = createFlowchestraGuarddog({
@@ -32,7 +32,7 @@ const guard = createFlowchestraGuarddog({
 
 ```ts
 // Non-Flowchestra consumer:
-import { Guarddog, defineClaims, defineDbRoles } from '@prisma-guarddog/core';
+import { Guarddog, defineClaims, defineDbRoles } from '@flowchestra/prisma-guarddog-core';
 
 const guard = new Guarddog({
   claims:  defineClaims({ ... }),

@@ -1,6 +1,6 @@
 {
-  "name": "@prisma-guarddog/importer-postgres",
-  "version": "0.0.0",
+  "name": "@flowchestra/prisma-guarddog-importer-postgres",
+  "version": "0.1.0-alpha.0",
   "description": "Postgres pg_policies + column privileges importer for prisma-guarddog (scaffold mode)",
   "license": "MIT",
   "repository": {
@@ -38,7 +38,7 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
-    "@prisma-guarddog/core": "workspace:*"
+    "@flowchestra/prisma-guarddog-core": "workspace:*"
   },
   "peerDependencies": {
     "pg": ">=8.0.0"
@@ -48,7 +48,7 @@
     "pg": "^8.13.1"
   },
   "publishConfig": {
-    "access": "public",
+    "access": "restricted",
     "main": "./dist/index.cjs",
     "module": "./dist/index.mjs",
     "types": "./dist/index.d.mts",
@@ -58,6 +58,7 @@
         "import": "./dist/index.mjs",
         "require": "./dist/index.cjs"
       }
-    }
+    },
+    "registry": "https://npm.pkg.github.com"
   }
 }

@@ -14,7 +14,7 @@ Scope is **locked**. The exit criteria below are deliberately narrow; do not pro
 
 #### Deliverables
 
-**Core (`@prisma-guarddog/core`)**
+**Core (`@flowchestra/prisma-guarddog-core`)**
 
 - `defineClaims()`, `defineDbRoles()`, `defineAppRoles()`, `resources()`
 - `new Guarddog({...})` constructor with `.model()`, `.policy()`, `.columnPrivileges()`, `.polymorphic()`, `.noPolicy()`, `.rawSql()` builders
@@ -23,25 +23,25 @@ Scope is **locked**. The exit criteria below are deliberately narrow; do not pro
 
 **Emitters**
 
-- `@prisma-guarddog/emitter-postgres-rls` — `CREATE POLICY`, `ENABLE/FORCE ROW LEVEL SECURITY`, table-level `REVOKE`
-- `@prisma-guarddog/emitter-postgres-column-privileges` — column `GRANT`/`REVOKE`
+- `@flowchestra/prisma-guarddog-emitter-postgres-rls` — `CREATE POLICY`, `ENABLE/FORCE ROW LEVEL SECURITY`, table-level `REVOKE`
+- `@flowchestra/prisma-guarddog-emitter-postgres-column-privileges` — column `GRANT`/`REVOKE`
 
 **Importers (scaffold-mode only)**
 
-- `@prisma-guarddog/importer-prisma` — DMMF → coverage check + model stubs
-- `@prisma-guarddog/importer-postgres` — `pg_policies` + column privileges → TS scaffolds with `rawSql()` + `.todo()` + `noPolicy()` stubs
+- `@flowchestra/prisma-guarddog-importer-prisma` — DMMF → coverage check + model stubs
+- `@flowchestra/prisma-guarddog-importer-postgres` — `pg_policies` + column privileges → TS scaffolds with `rawSql()` + `.todo()` + `noPolicy()` stubs
 
 **Testing**
 
-- `@prisma-guarddog/testing-postgres` — `withDbRole`, `withClaims`, `assertAllowed`, `assertDenied`, `assertVisibleRows`, `assertHiddenColumns`. Real Postgres only (no shims).
+- `@flowchestra/prisma-guarddog-testing-postgres` — `withDbRole`, `withClaims`, `assertAllowed`, `assertDenied`, `assertVisibleRows`, `assertHiddenColumns`. Real Postgres only (no shims).
 
 **Lint**
 
-- `@prisma-guarddog/lint` — every Prisma model must have `policy()`, `noPolicy()`, or `importedRawPolicy()`. CI fails otherwise.
+- `@flowchestra/prisma-guarddog-lint` — every Prisma model must have `policy()`, `noPolicy()`, or `importedRawPolicy()`. CI fails otherwise.
 
 **Preset**
 
-- `@prisma-guarddog/preset-flowchestra` — `createFlowchestraGuarddog({ prisma, claimsAccessor })`
+- `@flowchestra/prisma-guarddog-preset` — `createFlowchestraGuarddog({ prisma, claimsAccessor })`
 
 **CLI**
 
@@ -55,7 +55,7 @@ Scope is **locked**. The exit criteria below are deliberately narrow; do not pro
   3. Workbench-scoped with nullable `workbenchId`
   4. Column-level masking case (column privileges path)
   5. Polymorphic grant case (discriminated-union table)
-- End-to-end integration tests for each, using `@prisma-guarddog/testing-postgres`
+- End-to-end integration tests for each, using `@flowchestra/prisma-guarddog-testing-postgres`
 
 #### Definition of done
 
@@ -67,13 +67,13 @@ Scope is **locked**. The exit criteria below are deliberately narrow; do not pro
 
 ### Phase 2 — Provider and visibility extensions
 
-- **FDW table support** — emitter handles foreign tables with no native tenant column; policies join through the FDW (`@prisma-guarddog/emitter-fdw`)
+- **FDW table support** — emitter handles foreign tables with no native tenant column; policies join through the FDW (`@flowchestra/prisma-guarddog-emitter-fdw`)
 - **Row-conditional field masking** — `.masks()` / `.projection()` builders; emitted via generated secure views or projection functions
-- **Supabase-specific importer** — pulls policies via Supabase REST/dashboard rather than direct `pg_policies` (`@prisma-guarddog/importer-supabase`)
+- **Supabase-specific importer** — pulls policies via Supabase REST/dashboard rather than direct `pg_policies` (`@flowchestra/prisma-guarddog-importer-supabase`)
 
 ### Phase 3 — Identity provider integration
 
-- **WorkOS FGA bridge** — `@prisma-guarddog/fga-workos`
+- **WorkOS FGA bridge** — `@flowchestra/prisma-guarddog-fga-workos`
 - Translates WorkOS actions + composable roles → guarddog `appRoles` and grant predicates
 - Emitted policies call `app.*` functions that resolve FGA relationships at query time
 

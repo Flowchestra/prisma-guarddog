@@ -1,4 +1,11 @@
-import { defineAppRoles, defineClaims, defineDbRoles, defineResources, Guarddog, col } from '@prisma-guarddog/core'
+import {
+  defineAppRoles,
+  defineClaims,
+  defineDbRoles,
+  defineResources,
+  Guarddog,
+  col,
+} from '@flowchestra/prisma-guarddog-core'
 import { describe, expect, it } from 'vitest'
 
 import { lintCoverage } from './coverage.js'

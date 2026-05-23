@@ -1,0 +1,104 @@
+name: Release
+
+# Two jobs in one workflow:
+#   - "version-and-publish" runs on every push to main. It either opens / updates
+#     a "Version Packages" PR (when there are unreleased changesets) or, when
+#     that PR has just been merged, publishes the new versions to GitHub Packages.
+#   - "ci" runs on every PR + push so we never publish a version that didn't pass
+#     type-check + lint + test.
+#
+# Security note: no step interpolates untrusted user input (PR titles, commit
+# messages, etc.) into a run: command. Everything is from secrets, the
+# pre-set github.* event metadata used in if: conditions, or hard-coded.
+#
+# See RELEASING.md for the manual / local publish path.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  ci:
+    name: ci
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://npm.pkg.github.com
+          scope: '@flowchestra'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Type-check
+        run: pnpm -r run type-check
+
+      - name: Lint
+        run: pnpm exec oxlint packages examples
+
+      - name: Test
+        run: pnpm -r run test
+
+      - name: Build
+        run: pnpm -r run build
+
+  release:
+    name: release
+    needs: ci
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+      pull-requests: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://npm.pkg.github.com
+          scope: '@flowchestra'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build
+        run: pnpm -r run build
+
+      # Either open / update the "Version Packages" PR, or — if the version PR
+      # was just merged — actually publish. changesets/action handles both.
+      - name: Version or publish
+        uses: changesets/action@v1
+        with:
+          version: pnpm exec changeset version
+          publish: pnpm exec changeset publish
+          commit: 'chore(release): version packages'
+          title: 'chore(release): version packages'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -16,7 +16,7 @@
  *       defineClaims, defineDbRoles, defineAppRoles,
  *       defineResources, defineResourceGrants,
  *       col,
- *     } from 'prisma-guarddog'
+ *     } from '@flowchestra/prisma-guarddog'
  *
  *     export default defineSchema({
  *       claims:         defineClaims({ ... }),

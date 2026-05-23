@@ -1,6 +1,6 @@
 /**
  * Proof-of-API example: five representative Flowchestra-shape policies
- * authored on top of `@prisma-guarddog/preset-flowchestra`.
+ * authored on top of `@flowchestra/prisma-guarddog-preset`.
  *
  * Models covered (and what each one demonstrates):
  *
@@ -16,14 +16,14 @@
  * the values returned by this module.
  */
 
-import { col, defineSchema } from '@prisma-guarddog/core'
+import { col, defineSchema } from '@flowchestra/prisma-guarddog-core'
 import {
   createFlowchestraGuarddog,
   flowchestraAppRoles,
   flowchestraClaims,
   flowchestraDbRoles,
   flowchestraResources,
-} from '@prisma-guarddog/preset-flowchestra'
+} from '@flowchestra/prisma-guarddog-preset'
 
 /**
  * The canonical Flowchestra schema. Exported for the E2E test harness;

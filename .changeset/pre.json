@@ -1,0 +1,17 @@
+{
+  "mode": "pre",
+  "tag": "alpha",
+  "initialVersions": {
+    "example-flowchestra": "0.0.0",
+    "@flowchestra/prisma-guarddog": "0.0.0",
+    "@flowchestra/prisma-guarddog-core": "0.0.0",
+    "@flowchestra/prisma-guarddog-emitter-postgres-column-privileges": "0.0.0",
+    "@flowchestra/prisma-guarddog-emitter-postgres-rls": "0.0.0",
+    "@flowchestra/prisma-guarddog-importer-postgres": "0.0.0",
+    "@flowchestra/prisma-guarddog-importer-prisma": "0.0.0",
+    "@flowchestra/prisma-guarddog-lint": "0.0.0",
+    "@flowchestra/prisma-guarddog-preset": "0.0.0",
+    "@flowchestra/prisma-guarddog-testing-postgres": "0.0.0"
+  },
+  "changesets": ["initial-alpha"]
+}

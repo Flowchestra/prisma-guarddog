@@ -1,4 +1,4 @@
-# @prisma-guarddog/core
+# @flowchestra/prisma-guarddog-core
 
 The DSL, AST, and compile pipeline. Every other package depends on this one.
 
@@ -13,9 +13,9 @@ The DSL, AST, and compile pipeline. Every other package depends on this one.
 ## Install
 
 ```sh
-pnpm add @prisma-guarddog/core
+pnpm add @flowchestra/prisma-guarddog-core
 # or, if you only need the CLI surface:
-pnpm add prisma-guarddog
+pnpm add @flowchestra/prisma-guarddog
 ```
 
 ## 30-second usage
@@ -28,7 +28,7 @@ import {
   defineDbRoles,
   defineResources,
   defineSchema,
-} from '@prisma-guarddog/core'
+} from '@flowchestra/prisma-guarddog-core'
 
 export default defineSchema({
   claims: defineClaims({

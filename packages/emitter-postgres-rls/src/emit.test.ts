@@ -1,4 +1,11 @@
-import { Guarddog, col, defineAppRoles, defineClaims, defineDbRoles, defineResources } from '@prisma-guarddog/core'
+import {
+  Guarddog,
+  col,
+  defineAppRoles,
+  defineClaims,
+  defineDbRoles,
+  defineResources,
+} from '@flowchestra/prisma-guarddog-core'
 import { describe, expect, it } from 'vitest'
 
 import { emitPolicy, emitPolymorphic, type EmitContext } from './emit.js'

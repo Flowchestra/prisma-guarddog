@@ -14,6 +14,7 @@
 import { Command } from 'commander'
 import pc from 'picocolors'
 
+import pkg from '../package.json' with { type: 'json' }
 import { runCheck } from './commands/check.js'
 import { runMigrate } from './commands/migrate.js'
 import { discoverConfig } from './config.js'
@@ -23,7 +24,7 @@ async function main(): Promise<void> {
   program
     .name('guarddog')
     .description('Schema-driven policy compiler for Prisma-backed Postgres applications.')
-    .version('0.0.0')
+    .version(pkg.version)
 
   program
     .command('check')

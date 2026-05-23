@@ -102,7 +102,7 @@ generator guarddog {
 }
 ```
 
-The generator implementation lives in the `@prisma-guarddog/importer-prisma`
+The generator implementation lives in the `@flowchestra/prisma-guarddog-importer-prisma`
 package (it owns the DMMF integration anyway).
 
 ## IDE / LSP integration
@@ -120,7 +120,7 @@ falls out of TypeScript's existing LSP because:
 
 What we add on top:
 
-- A `@prisma-guarddog/lint` rule that fires on Prisma models not covered
+- A `@flowchestra/prisma-guarddog-lint` rule that fires on Prisma models not covered
   by a `policy()` / `noPolicy()` / `importedRawPolicy()` declaration
   (already planned).
 - Generated `.d.ts` artifacts that bridge Prisma's DMMF into our

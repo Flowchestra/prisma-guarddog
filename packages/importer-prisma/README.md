@@ -1,4 +1,4 @@
-# @prisma-guarddog/importer-prisma
+# @flowchestra/prisma-guarddog-importer-prisma
 
 Prisma DMMF readers and model-type codegen. Bridges the Prisma side of the contract into the guarddog schema for autocomplete and for the lint coverage check.
 
@@ -12,7 +12,7 @@ Prisma DMMF readers and model-type codegen. Bridges the Prisma side of the contr
 ## Install
 
 ```sh
-pnpm add -D @prisma-guarddog/importer-prisma
+pnpm add -D @flowchestra/prisma-guarddog-importer-prisma
 ```
 
 Add the generator block to your Prisma schema (this points at the CLI's binary, which re-exports `runGuarddogGenerator`):
@@ -38,4 +38,4 @@ export type ModelTables = { Workspace: 'workspace'; Workbench: 'workbench'; … 
 
 - [`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) — where the importer slots in
 - [`docs/adr/0012-scaffold-only-importer.md`](../../docs/adr/0012-scaffold-only-importer.md) — the importers' contract (this one ALSO informs the lint package)
-- [`@prisma-guarddog/lint`](../lint) — coverage check consumes the model list this importer produces
+- [`@flowchestra/prisma-guarddog-lint`](../lint) — coverage check consumes the model list this importer produces

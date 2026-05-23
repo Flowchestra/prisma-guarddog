@@ -33,7 +33,7 @@ referenceable in policy predicates:
    inheritance is structural Postgres inheritance (`GRANT app_user TO
    app_system`). Authored via `defineDbRoles`. Referenced via the `.policy(role)`
    slot — the target of `CREATE POLICY ... TO <role>`. Compiled by
-   `@prisma-guarddog/emitter-postgres-rls`' `emitRoles()`.
+   `@flowchestra/prisma-guarddog-emitter-postgres-rls`' `emitRoles()`.
 
 2. **`appRoles`** — application role names (`workspace.admin`,
    `workbench.editor`). Renamed from `businessRoles` in commit 1ff622e to

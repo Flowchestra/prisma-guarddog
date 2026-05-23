@@ -1,6 +1,6 @@
 # Changesets
 
-This directory is managed by [Changesets](https://github.com/changesets/changesets) — the tool we use to track and publish independently-versioned releases of the `@prisma-guarddog/*` packages.
+This directory is managed by [Changesets](https://github.com/changesets/changesets) — the tool we use to track and publish independently-versioned releases of the `@flowchestra/prisma-guarddog-*` packages.
 
 ## When to add a changeset
 
@@ -16,7 +16,7 @@ The CLI walks you through which packages changed, what bump (`major` / `minor` /
 
 ## What gets versioned
 
-- All `@prisma-guarddog/*` packages and the unscoped `prisma-guarddog` CLI are versioned **independently** per [ADR-0016](../docs/adr/0016-turborepo-monorepo.md). A change to one emitter does not force a bump on the others.
+- All `@flowchestra/prisma-guarddog-*` packages and the unscoped `prisma-guarddog` CLI are versioned **independently** per [ADR-0016](../docs/adr/0016-turborepo-monorepo.md). A change to one emitter does not force a bump on the others.
 - The monorepo root and `examples/*` are `private` and never published. The config's `privatePackages.version: false` excludes them.
 
 ## Release flow

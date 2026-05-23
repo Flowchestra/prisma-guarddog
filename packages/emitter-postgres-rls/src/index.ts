@@ -1,5 +1,5 @@
 /**
- * `@prisma-guarddog/emitter-postgres-rls` — pure AST -> SQL transformer.
+ * `@flowchestra/prisma-guarddog-emitter-postgres-rls` — pure AST -> SQL transformer.
  *
  * Public API:
  *   - `emitPolicy(policy, ctx)`           PolicyAst       -> readonly string[]

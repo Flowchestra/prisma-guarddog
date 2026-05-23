@@ -16,7 +16,7 @@ import type {
   PolymorphicTargetAst,
   PolymorphicTargetPolicyAst,
   ResourceGrantsDefinition,
-} from '@prisma-guarddog/core'
+} from '@flowchestra/prisma-guarddog-core'
 
 import {
   compileExpr,

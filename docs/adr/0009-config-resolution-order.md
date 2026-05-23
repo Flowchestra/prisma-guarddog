@@ -27,7 +27,7 @@ Guarddog-specific settings (policy entrypoint, sidecar extension, dialect target
 
 ```ts
 // guarddog.config.ts
-import { defineConfig } from '@prisma-guarddog/core/config';
+import { defineConfig } from '@flowchestra/prisma-guarddog-core/config';
 
 export default defineConfig({
   // Optional — auto-detected from prisma.config.ts or convention:

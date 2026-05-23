@@ -1,6 +1,6 @@
 {
-  "name": "@prisma-guarddog/preset-flowchestra",
-  "version": "0.0.0",
+  "name": "@flowchestra/prisma-guarddog-preset",
+  "version": "0.1.0-alpha.0",
   "description": "Flowchestra preset for prisma-guarddog: createFlowchestraGuarddog with WorkOS claim shape and app_user/app_system role hierarchy",
   "license": "MIT",
   "repository": {
@@ -38,7 +38,7 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
-    "@prisma-guarddog/core": "workspace:*"
+    "@flowchestra/prisma-guarddog-core": "workspace:*"
   },
   "peerDependencies": {
     "@prisma/client": ">=6.0.0"
@@ -48,7 +48,7 @@
     "prisma": "^6.0.0"
   },
   "publishConfig": {
-    "access": "public",
+    "access": "restricted",
     "main": "./dist/index.cjs",
     "module": "./dist/index.mjs",
     "types": "./dist/index.d.mts",
@@ -58,6 +58,7 @@
         "import": "./dist/index.mjs",
         "require": "./dist/index.cjs"
       }
-    }
+    },
+    "registry": "https://npm.pkg.github.com"
   }
 }

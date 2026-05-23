@@ -23,12 +23,12 @@ Tests that pass against `pg-mem` while the production query fails on real Postgr
 
 ## Decision
 
-The testing extension (`@prisma-guarddog/testing-postgres`) requires a real Postgres connection. There is no `pg-mem` / `pglite` / in-memory option, and the package will not accept a PR adding one.
+The testing extension (`@flowchestra/prisma-guarddog-testing-postgres`) requires a real Postgres connection. There is no `pg-mem` / `pglite` / in-memory option, and the package will not accept a PR adding one.
 
 Each test runs inside a transaction (`BEGIN ... ROLLBACK`) for isolation, with `SET LOCAL ROLE` and `SET LOCAL request.jwt.claims = '...'` to install the test's identity:
 
 ```ts
-import { withDbRole, withClaims, assertAllowed, assertDenied } from '@prisma-guarddog/testing-postgres';
+import { withDbRole, withClaims, assertAllowed, assertDenied } from '@flowchestra/prisma-guarddog-testing-postgres';
 
 test('app_user cannot read workbenches in other tenants', () =>
   withDbRole('app_user', withClaims({ tenantId: 'A', workspaceId: 'X' }, async (db) => {

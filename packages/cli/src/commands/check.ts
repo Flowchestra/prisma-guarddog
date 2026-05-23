@@ -9,7 +9,7 @@
  * "does the schema even parse?" gate.
  */
 
-import type { Guarddog } from '@prisma-guarddog/core'
+import type { Guarddog } from '@flowchestra/prisma-guarddog-core'
 import pc from 'picocolors'
 
 import type { ResolvedConfig } from '../config.js'

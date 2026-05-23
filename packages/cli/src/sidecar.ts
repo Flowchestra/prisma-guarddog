@@ -22,7 +22,7 @@
 import { readFile, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 
-import { applyOps, empty, type Op, type State } from '@prisma-guarddog/core'
+import { applyOps, empty, type Op, type State } from '@flowchestra/prisma-guarddog-core'
 
 export const SIDECAR_FILENAME = 'guarddog.json'
 export const SIDECAR_VERSION = 1
