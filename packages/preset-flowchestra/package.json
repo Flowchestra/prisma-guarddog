@@ -1,0 +1,46 @@
+{
+  "name": "@prisma-guarddog/preset-flowchestra",
+  "version": "0.0.0",
+  "description": "Flowchestra preset for prisma-guarddog: createFlowchestraGuarddog with WorkOS claim shape and app_user/app_system role hierarchy",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Flowchestra/prisma-guarddog.git",
+    "directory": "packages/preset-flowchestra"
+  },
+  "keywords": ["prisma", "rls", "flowchestra", "workos", "preset"],
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "files": ["dist", "src", "README.md"],
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "type-check": "tsgo --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@prisma-guarddog/core": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public",
+    "main": "./dist/index.cjs",
+    "module": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js",
+        "require": "./dist/index.cjs"
+      }
+    }
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "name": "prisma-guarddog-monorepo",
+  "version": "0.0.0",
+  "description": "TypeScript policy compiler and verification harness for Prisma-backed Postgres applications",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "packageManager": "pnpm@10.0.0",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "type-check": "turbo run type-check",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check",
+    "test": "turbo run test",
+    "test:watch": "turbo run test:watch",
+    "clean": "turbo run clean && rm -rf node_modules .turbo",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.6.0",
+    "@commitlint/config-conventional": "^19.6.0",
+    "@types/node": "^22.10.0",
+    "@typescript/native-preview": "latest",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.2.10",
+    "oxfmt": "latest",
+    "oxlint": "latest",
+    "prettier": "^3.4.2",
+    "tsdown": "latest",
+    "turbo": "^2.3.0",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx,mjs,cjs}": [
+      "oxfmt --write",
+      "oxlint --fix"
+    ],
+    "*.{json,md,mdx,yaml,yml}": "prettier --write"
+  }
+}
