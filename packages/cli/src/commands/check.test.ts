@@ -54,8 +54,7 @@ describe('inspectGuard (pure)', () => {
         appRoles: defineAppRoles({}),
         resources: defineResources({}),
         policies(g) {
-          guard
-            .polymorphic('Scope', { discriminator: 'kind' })
+          g.polymorphic('Scope', { discriminator: 'kind' })
             .target('A', { model: 'A' })
             .policy('app_user')
             .select((p) => p.literal(true))
@@ -112,8 +111,7 @@ describe('inspectGuard (pure)', () => {
         appRoles: defineAppRoles({}),
         resources: defineResources({}),
         policies(g) {
-          guard
-            .model('Foo')
+          g.model('Foo')
             .columnPrivileges({ apiKey: { select: ['app_user'] } })
             .policy('app_user')
             .select((p) => p.literal(true))
