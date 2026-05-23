@@ -163,7 +163,7 @@ export class PredicateBuilder<TClaims = Record<string, unknown>> {
   }
 
   /**
-   * High-level helper: does the requesting user hold a businessRole, optionally
+   * High-level helper: does the requesting user hold a appRole, optionally
    * scoped to a particular resource identified by a column reference?
    *
    *   p.hasRole('workspace.admin')                          // global

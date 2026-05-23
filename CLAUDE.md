@@ -35,7 +35,7 @@ And the topology primitive:
 
 - **`resources`** — resource tree (Tenant → Org → Workspace → Workbench). Not a permission layer; declares parent/child relationships that other things cascade through.
 
-Never conflate the layers. "Hierarchy" is one word, several animals: dbRole inheritance, appRole membership, resourceGrant scope, resource-tree cascade, jsonb-permission lookup all use different SQL and resolve at different stages. See [ADR-0003](./docs/adr/0003-four-primitive-split.md) (originally written before the three-layer split; the layer naming there will be updated in the same commit that renames `businessRoles` → `appRoles`).
+Never conflate the layers. "Hierarchy" is one word, several animals: dbRole inheritance, appRole membership, resourceGrant scope, resource-tree cascade, jsonb-permission lookup all use different SQL and resolve at different stages. See [ADR-0003](./docs/adr/0003-four-primitive-split.md).
 
 ## Column visibility — hard split
 

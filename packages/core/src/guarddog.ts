@@ -6,7 +6,7 @@
  *     const guard = new Guarddog({
  *       claims:        defineClaims({ ... }),
  *       dbRoles:       defineDbRoles({ ... }),
- *       businessRoles: defineBusinessRoles({ ... }),
+ *       appRoles: defineAppRoles({ ... }),
  *       resources:     defineResources({ ... }),
  *     });
  *
@@ -30,6 +30,7 @@
  * snapshot — new snapshots reflect the latest state.
  */
 
+import type { AppRolesDefinition } from './app-roles.js'
 import type {
   ColumnPrivilegeAst,
   ColumnPrivilegeGrant,
@@ -43,7 +44,6 @@ import type {
   UpdateSpec,
   Verb,
 } from './ast.js'
-import type { BusinessRolesDefinition } from './business-roles.js'
 import type { ClaimsDefinition, ClaimsShape, InferClaims } from './claims.js'
 import type { DbRolesDefinition } from './db-roles.js'
 import { PolymorphicBuilder } from './polymorphic.js'
@@ -53,12 +53,12 @@ import type { ResourceTreeDefinition } from './resources.js'
 export interface GuarddogConfig<
   TClaimsShape extends ClaimsShape,
   TDbRoles extends string,
-  TBusinessRoles extends string,
+  TAppRoles extends string,
   TResources extends string,
 > {
   readonly claims: ClaimsDefinition<TClaimsShape>
   readonly dbRoles: DbRolesDefinition<TDbRoles>
-  readonly businessRoles: BusinessRolesDefinition<TBusinessRoles>
+  readonly appRoles: AppRolesDefinition<TAppRoles>
   readonly resources: ResourceTreeDefinition<TResources>
 }
 
@@ -67,16 +67,16 @@ type PredicateFn<TClaims> = (p: PredicateBuilder<TClaims>) => FluentExpr
 export class Guarddog<
   TClaimsShape extends ClaimsShape = ClaimsShape,
   TDbRoles extends string = string,
-  TBusinessRoles extends string = string,
+  TAppRoles extends string = string,
   TResources extends string = string,
 > {
-  readonly config: GuarddogConfig<TClaimsShape, TDbRoles, TBusinessRoles, TResources>
+  readonly config: GuarddogConfig<TClaimsShape, TDbRoles, TAppRoles, TResources>
   private readonly _modelBuilders = new Map<string, ModelBuilder<TClaimsShape, TDbRoles>>()
   private readonly _policies = new Map<string, PolicyBuilder<TClaimsShape, TDbRoles>>()
   private readonly _noPolicies = new Map<string, NoPolicyAst>()
   private readonly _polymorphics = new Map<string, PolymorphicBuilder<TClaimsShape, TDbRoles>>()
 
-  constructor(config: GuarddogConfig<TClaimsShape, TDbRoles, TBusinessRoles, TResources>) {
+  constructor(config: GuarddogConfig<TClaimsShape, TDbRoles, TAppRoles, TResources>) {
     this.config = config
   }
 

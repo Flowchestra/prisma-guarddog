@@ -13,7 +13,7 @@ Three phases, with hard boundaries. Items outside the listed phases are either d
 
 ### Phase 1 — Foundations
 
-- Core types: `defineClaims`, `defineDbRoles`, `defineBusinessRoles`, `resources`
+- Core types: `defineClaims`, `defineDbRoles`, `defineAppRoles`, `resources`
 - `Guarddog` constructor with `.model()`, `.policy()`, `.columnPrivileges()`, `.polymorphic()`, `.noPolicy()`, `.rawSql()` builders
 - Explicit `USING` / `WITH CHECK` split (no inference)
 - `.emit()` / `.diff()` / `.migrate()` lifecycle
@@ -36,7 +36,7 @@ Three phases, with hard boundaries. Items outside the listed phases are either d
 ### Phase 3 — Identity provider integration
 
 - WorkOS FGA bridge (`@prisma-guarddog/fga-workos`)
-- Translates WorkOS actions + composable roles → guarddog `businessRoles` and grant predicates
+- Translates WorkOS actions + composable roles → guarddog `appRoles` and grant predicates
 - Emits policies that call `app.*` functions resolving FGA relationships at query time
 
 ### Out of scope entirely

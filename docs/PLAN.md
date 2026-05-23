@@ -14,7 +14,7 @@ Scope is **locked**. The exit criteria below are deliberately narrow; do not pro
 
 **Core (`@prisma-guarddog/core`)**
 
-- `defineClaims()`, `defineDbRoles()`, `defineBusinessRoles()`, `resources()`
+- `defineClaims()`, `defineDbRoles()`, `defineAppRoles()`, `resources()`
 - `new Guarddog({...})` constructor with `.model()`, `.policy()`, `.columnPrivileges()`, `.polymorphic()`, `.noPolicy()`, `.rawSql()` builders
 - `.emit()`, `.diff()`, `.migrate()` lifecycle methods
 - Pure typed AST output; no SQL emission in core
@@ -72,7 +72,7 @@ Scope is **locked**. The exit criteria below are deliberately narrow; do not pro
 ### Phase 3 — Identity provider integration
 
 - **WorkOS FGA bridge** — `@prisma-guarddog/fga-workos`
-- Translates WorkOS actions + composable roles → guarddog `businessRoles` and grant predicates
+- Translates WorkOS actions + composable roles → guarddog `appRoles` and grant predicates
 - Emitted policies call `app.*` functions that resolve FGA relationships at query time
 
 ### Out of scope (entirely, not "Phase 4")
@@ -89,7 +89,7 @@ Tracked in the repo's todo system. High-level sequence:
 1. Cleanup commit (Flowchestra-bootstrap residue) ✓
 2. `docs/` + 17 ADRs ← *we are here*
 3. Turborepo scaffold: `turbo.json`, `pnpm-workspace.yaml`, root `package.json`, `tsconfig.base.json`, `packages/*/package.json` skeletons
-4. Core type primitives: `defineClaims` / `defineDbRoles` / `defineBusinessRoles` / `resources`
+4. Core type primitives: `defineClaims` / `defineDbRoles` / `defineAppRoles` / `resources`
 5. Constructor + policy builders (`.model`, `.policy`, `.columnPrivileges`, `.polymorphic`, `.noPolicy`, `.rawSql`)
 6. Emitters (RLS + column privileges)
 7. `.emit()` / `.diff()` lifecycle in core (forward-replay sidecars)

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
+import { defineAppRoles } from './app-roles.js'
 import type { Expr, PolicyAst } from './ast.js'
-import { defineBusinessRoles } from './business-roles.js'
 import { defineClaims } from './claims.js'
 import { defineDbRoles } from './db-roles.js'
 import { Guarddog } from './guarddog.js'
@@ -23,7 +23,7 @@ function makeGuard() {
       app_user: { inherits: [] },
       app_system: { inherits: ['app_user'], bypassesRls: true },
     }),
-    businessRoles: defineBusinessRoles({
+    appRoles: defineAppRoles({
       'workspace.admin': {},
       'workspace.editor': {},
     }),

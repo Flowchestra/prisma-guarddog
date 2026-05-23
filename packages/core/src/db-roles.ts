@@ -6,8 +6,8 @@
  * principals on the `FOR ALL TO <role>` side of every emitted `CREATE POLICY`.
  *
  * dbRole inheritance is *structural Postgres inheritance* — distinct from
- * resource-scope cascade (see `./resources.ts`) and business-role evaluation
- * (see `./business-roles.ts`). See docs/adr/0003-four-primitive-split.md.
+ * resource-scope cascade (see `./resources.ts`) and app-role evaluation
+ * (see `./app-roles.ts`). See docs/adr/0003-four-primitive-split.md.
  *
  * Example:
  *

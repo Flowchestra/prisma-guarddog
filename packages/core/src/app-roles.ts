@@ -1,8 +1,8 @@
 /**
- * `defineBusinessRoles` — declare the application-level role names that may
+ * `defineAppRoles` — declare the application-level role names that may
  * appear in claim predicates.
  *
- * businessRoles are strings carried in JWT claims (e.g., `workspace.admin`,
+ * appRoles are strings carried in JWT claims (e.g., `workspace.admin`,
  * `workbench.editor`). They are NOT Postgres roles — they are evaluated by
  * predicates inside emitted `USING` / `WITH CHECK` clauses against the
  * session's claims. See docs/adr/0003-four-primitive-split.md.
@@ -13,7 +13,7 @@
  *
  * Example:
  *
- *     const businessRoles = defineBusinessRoles({
+ *     const appRoles = defineAppRoles({
  *       'org.admin':         {},
  *       'workspace.admin':   {},
  *       'workspace.editor':  {},
@@ -22,26 +22,26 @@
  *     });
  */
 
-export interface BusinessRoleSpec {
+export interface AppRoleSpec {
   // Phase 1: intentionally empty. Reserved for future metadata.
 }
 
-export interface BusinessRolesDefinition<R extends string = string> {
-  readonly roles: Readonly<Record<R, BusinessRoleSpec>>
+export interface AppRolesDefinition<R extends string = string> {
+  readonly roles: Readonly<Record<R, AppRoleSpec>>
 }
 
-export function defineBusinessRoles<const T extends Record<string, BusinessRoleSpec>>(
+export function defineAppRoles<const T extends Record<string, AppRoleSpec>>(
   roles: T
-): BusinessRolesDefinition<Extract<keyof T, string>> {
+): AppRolesDefinition<Extract<keyof T, string>> {
   type R = Extract<keyof T, string>
-  const normalized: Record<string, BusinessRoleSpec> = {}
+  const normalized: Record<string, AppRoleSpec> = {}
   for (const name of Object.keys(roles)) {
     if (name.length === 0) {
-      throw new Error('[prisma-guarddog] defineBusinessRoles: role name must be a non-empty string.')
+      throw new Error('[prisma-guarddog] defineAppRoles: role name must be a non-empty string.')
     }
     normalized[name] = Object.freeze({})
   }
   return Object.freeze({
-    roles: Object.freeze(normalized) as Readonly<Record<R, BusinessRoleSpec>>,
+    roles: Object.freeze(normalized) as Readonly<Record<R, AppRoleSpec>>,
   })
 }

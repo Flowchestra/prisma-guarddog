@@ -10,11 +10,11 @@ A Postgres database role, created via `CREATE ROLE`. Examples: `app_user`, `app_
 
 **dbRole inheritance** is structural inheritance between Postgres roles (`CREATE ROLE app_system INHERIT IN ROLE app_user`). This is **not** the same as resource-scope cascade.
 
-### `businessRole`
+### `appRole`
 
-An application-level role, expressed as a string in the user's claims. Examples: `workspace.admin`, `workbench.editor`, `org.viewer`. businessRoles are referenced inside policy predicates via `claim.hasRole('workspace.admin', col('workspaceId'))`.
+An application-level role, expressed as a string in the user's claims. Examples: `workspace.admin`, `workbench.editor`, `org.viewer`. appRoles are referenced inside policy predicates via `claim.hasRole('workspace.admin', col('workspaceId'))`.
 
-businessRoles are **not** Postgres roles. They are evaluated by predicates inside `USING` / `WITH CHECK` clauses, against the JWT claims set in the session.
+appRoles are **not** Postgres roles. They are evaluated by predicates inside `USING` / `WITH CHECK` clauses, against the JWT claims set in the session.
 
 ### `resource`
 
@@ -24,7 +24,7 @@ A node in the resource tree (Tenant → Org → Workspace → Workbench). Resour
 
 ### `grant`
 
-A principal/action/resource record. A grant is the result of attaching a `businessRole` (or `dbRole`) to a `resource` via a predicate. Grants are not stored anywhere by guarddog — they're evaluated at query time by Postgres against the session's claims. Guarddog emits the policies that perform the evaluation.
+A principal/action/resource record. A grant is the result of attaching a `appRole` (or `dbRole`) to a `resource` via a predicate. Grants are not stored anywhere by guarddog — they're evaluated at query time by Postgres against the session's claims. Guarddog emits the policies that perform the evaluation.
 
 ## Other vocabulary
 

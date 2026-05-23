@@ -18,8 +18,8 @@ export type { ClaimBuilder, ClaimField, ClaimKind, ClaimsDefinition, ClaimsShape
 export { defineDbRoles } from './db-roles.js'
 export type { DbRoleSpec, DbRolesDefinition } from './db-roles.js'
 
-export { defineBusinessRoles } from './business-roles.js'
-export type { BusinessRoleSpec, BusinessRolesDefinition } from './business-roles.js'
+export { defineAppRoles } from './app-roles.js'
+export type { AppRoleSpec, AppRolesDefinition } from './app-roles.js'
 
 export { defineResources } from './resources.js'
 export type { ResourceParentRef, ResourceSpec, ResourceTreeDefinition } from './resources.js'

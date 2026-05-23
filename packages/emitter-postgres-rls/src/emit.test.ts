@@ -1,4 +1,4 @@
-import { Guarddog, col, defineBusinessRoles, defineClaims, defineDbRoles, defineResources } from '@prisma-guarddog/core'
+import { Guarddog, col, defineAppRoles, defineClaims, defineDbRoles, defineResources } from '@prisma-guarddog/core'
 import { describe, expect, it } from 'vitest'
 
 import { emitPolicy, emitPolymorphic, type EmitContext } from './emit.js'
@@ -18,7 +18,7 @@ function makeGuard() {
       app_user: { inherits: [] },
       app_system: { inherits: ['app_user'], bypassesRls: true },
     }),
-    businessRoles: defineBusinessRoles({
+    appRoles: defineAppRoles({
       'workspace.admin': {},
       'workspace.editor': {},
     }),
