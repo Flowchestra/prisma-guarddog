@@ -40,13 +40,15 @@
     "@prisma-guarddog/core": "workspace:*"
   },
   "peerDependencies": {
-    "@prisma/internals": ">=6.0.0"
+    "@prisma/internals": ">=6.0.0",
+    "@prisma/generator-helper": ">=6.0.0"
   },
   "devDependencies": {
     "@prisma/client": "^6.0.0",
     "@prisma/internals": "^6.0.0",
     "@types/node": "^22.10.0",
-    "prisma": "^6.0.0"
+    "prisma": "^6.0.0",
+    "@prisma/generator-helper": "^6.0.0"
   },
   "publishConfig": {
     "access": "public",

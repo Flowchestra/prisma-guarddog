@@ -18,7 +18,8 @@
   "type": "module",
   "bin": {
     "guarddog": "./src/bin.ts",
-    "prisma-guarddog": "./src/bin.ts"
+    "prisma-guarddog": "./src/bin.ts",
+    "prisma-guarddog-generator": "./src/generator-bin.ts"
   },
   "main": "./src/index.ts",
   "types": "./src/index.ts",
@@ -50,7 +51,8 @@
     "@prisma-guarddog/lint": "workspace:*",
     "commander": "^13.0.0",
     "jiti": "^2.5.0",
-    "picocolors": "^1.1.1"
+    "picocolors": "^1.1.1",
+    "@prisma/generator-helper": "^6.0.0"
   },
   "peerDependencies": {
     "@prisma/internals": ">=6.0.0",
@@ -65,7 +67,8 @@
     "access": "public",
     "bin": {
       "guarddog": "./dist/bin.js",
-      "prisma-guarddog": "./dist/bin.js"
+      "prisma-guarddog": "./dist/bin.js",
+      "prisma-guarddog-generator": "./dist/generator-bin.js"
     },
     "main": "./dist/index.cjs",
     "module": "./dist/index.js",

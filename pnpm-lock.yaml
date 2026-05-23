@@ -74,6 +74,9 @@ importers:
       '@prisma-guarddog/lint':
         specifier: workspace:*
         version: link:../lint
+      '@prisma/generator-helper':
+        specifier: ^6.0.0
+        version: 6.19.3
       commander:
         specifier: ^13.0.0
         version: 13.1.0
@@ -137,6 +140,9 @@ importers:
       '@prisma/client':
         specifier: ^6.0.0
         version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
+      '@prisma/generator-helper':
+        specifier: ^6.0.0
+        version: 6.19.3
       '@prisma/internals':
         specifier: ^6.0.0
         version: 6.19.3(typescript@5.9.3)
