@@ -2,18 +2,8 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "rootDir": "./src",
-    "outDir": "./dist",
-    "composite": true,
-    "tsBuildInfoFile": "./dist/.tsbuildinfo"
+    "outDir": "./dist"
   },
   "include": ["src/**/*"],
-  "exclude": ["dist", "node_modules", "**/*.test.ts", "**/*.spec.ts"],
-  "references": [
-    { "path": "../core" },
-    { "path": "../emitter-postgres-rls" },
-    { "path": "../emitter-postgres-column-privileges" },
-    { "path": "../importer-prisma" },
-    { "path": "../importer-postgres" },
-    { "path": "../lint" }
-  ]
+  "exclude": ["dist", "node_modules"]
 }

@@ -1,15 +1,5 @@
 {
   "extends": "./tsconfig.base.json",
   "include": [],
-  "references": [
-    { "path": "./packages/core" },
-    { "path": "./packages/emitter-postgres-rls" },
-    { "path": "./packages/emitter-postgres-column-privileges" },
-    { "path": "./packages/importer-prisma" },
-    { "path": "./packages/importer-postgres" },
-    { "path": "./packages/testing-postgres" },
-    { "path": "./packages/lint" },
-    { "path": "./packages/preset-flowchestra" },
-    { "path": "./packages/cli" }
-  ]
+  "files": []
 }
