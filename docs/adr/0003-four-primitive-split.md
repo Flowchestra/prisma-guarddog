@@ -1,6 +1,6 @@
 # 0003 — Four-primitive split
 
-**Status:** Accepted
+**Status:** Superseded by [ADR-0019](./0019-three-permission-layers-and-resource-permissions.md)
 **Date:** 2026-05-23
 
 ## Context
