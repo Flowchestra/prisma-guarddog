@@ -54,3 +54,19 @@ export type {
   UpdateSpec,
   Verb,
 } from './ast.js'
+
+export { defaultTableResolver, policyName, snakeCase } from './naming.js'
+
+export { applyOps, columnGrantKey, empty, policyMapKey, roleMembershipKey } from './ops.js'
+export type {
+  ColumnGrantRecord,
+  ColumnVerb,
+  Op,
+  PolicyOpRecord,
+  RoleMembershipRecord,
+  RoleRecord,
+  State,
+} from './ops.js'
+
+export { compileToOps, compileToState, diffStates } from './lifecycle.js'
+export type { CompileOptions, CoverageSummary, GuarddogLike } from './lifecycle.js'
