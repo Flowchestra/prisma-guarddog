@@ -30,7 +30,18 @@
  * snapshot — new snapshots reflect the latest state.
  */
 
-import type { DeleteSpec, Expr, InsertSpec, PolicyAst, SelectSpec, UpdateSpec } from './ast.js'
+import type {
+  ColumnPrivilegeAst,
+  ColumnPrivilegeGrant,
+  DeleteSpec,
+  Expr,
+  InsertSpec,
+  NoPolicyAst,
+  PolicyAst,
+  SelectSpec,
+  UpdateSpec,
+  Verb,
+} from './ast.js'
 import type { BusinessRolesDefinition } from './business-roles.js'
 import type { ClaimsDefinition, ClaimsShape, InferClaims } from './claims.js'
 import type { DbRolesDefinition } from './db-roles.js'
@@ -60,9 +71,43 @@ export class Guarddog<
   readonly config: GuarddogConfig<TClaimsShape, TDbRoles, TBusinessRoles, TResources>
   private readonly _modelBuilders = new Map<string, ModelBuilder<TClaimsShape, TDbRoles>>()
   private readonly _policies = new Map<string, PolicyBuilder<TClaimsShape, TDbRoles>>()
+  private readonly _noPolicies = new Map<string, NoPolicyAst>()
 
   constructor(config: GuarddogConfig<TClaimsShape, TDbRoles, TBusinessRoles, TResources>) {
     this.config = config
+  }
+
+  /**
+   * Declare that a Prisma model intentionally has no policy. Required `reason`
+   * makes the decision auditable — a `noPolicy` is a real decision, not a
+   * forgotten one. The lint extension treats a model as covered if it has
+   * either at least one `PolicyAst` OR a `NoPolicyAst` with a non-empty reason.
+   *
+   *   guard.noPolicy('MigrationLedger', {
+   *     reason: 'system-only table; access gated by app_system role grants',
+   *   });
+   *
+   * Calling `.noPolicy()` on a model that already has a policy throws — the
+   * two are mutually exclusive at the coverage level.
+   */
+  noPolicy(modelName: string, opts: { reason: string }): this {
+    if (modelName.length === 0) {
+      throw new Error('[prisma-guarddog] Guarddog.noPolicy(): modelName must be a non-empty string.')
+    }
+    if (opts.reason.length === 0) {
+      throw new Error(
+        `[prisma-guarddog] Guarddog.noPolicy("${modelName}"): reason must be a non-empty string. ` +
+          'A noPolicy declaration is a real decision; document why.'
+      )
+    }
+    if (this._modelBuilders.has(modelName)) {
+      throw new Error(
+        `[prisma-guarddog] Guarddog.noPolicy("${modelName}"): cannot mark a model as noPolicy after it has had any builder activity. ` +
+          'Remove the model() / policy() calls or remove the noPolicy() call.'
+      )
+    }
+    this._noPolicies.set(modelName, Object.freeze({ model: modelName, reason: opts.reason }))
+    return this
   }
 
   /**
@@ -73,6 +118,12 @@ export class Guarddog<
   model(modelName: string): ModelBuilder<TClaimsShape, TDbRoles> {
     if (modelName.length === 0) {
       throw new Error('[prisma-guarddog] Guarddog.model(): modelName must be a non-empty string.')
+    }
+    if (this._noPolicies.has(modelName)) {
+      throw new Error(
+        `[prisma-guarddog] Guarddog.model("${modelName}"): this model was previously declared as noPolicy(). ` +
+          'Remove the noPolicy() call if you want to declare a policy.'
+      )
     }
     let builder = this._modelBuilders.get(modelName)
     if (builder === undefined) {
@@ -117,10 +168,33 @@ export class Guarddog<
   getPolicies(): readonly PolicyAst[] {
     return Object.freeze([...this._policies.values()].map((b) => b._toAst()))
   }
+
+  /**
+   * Deeply-frozen snapshot of every column-privilege declaration. Independent
+   * of `getPolicies()` because column privileges are per-model, not
+   * per-(model, dbRole). Emitter consumes this.
+   */
+  getColumnPrivileges(): readonly ColumnPrivilegeAst[] {
+    return Object.freeze(
+      [...this._modelBuilders.values()]
+        .map((b) => b._toColumnPrivilegeAst())
+        .filter((ast): ast is ColumnPrivilegeAst => ast !== undefined)
+    )
+  }
+
+  /**
+   * Deeply-frozen snapshot of every `noPolicy()` declaration. Lint extension
+   * uses this to satisfy coverage without authoring real policies for tables
+   * that don't need them.
+   */
+  getNoPolicies(): readonly NoPolicyAst[] {
+    return Object.freeze([...this._noPolicies.values()])
+  }
 }
 
 export class ModelBuilder<TClaimsShape extends ClaimsShape, TDbRoles extends string> {
   private _table: string | undefined
+  private _columnPrivileges = new Map<string, ColumnPrivilegeGrant>()
 
   constructor(
     private readonly _guard: Guarddog<TClaimsShape, TDbRoles>,
@@ -137,6 +211,65 @@ export class ModelBuilder<TClaimsShape extends ClaimsShape, TDbRoles extends str
     }
     this._table = name
     return this
+  }
+
+  /**
+   * Declare per-column, per-verb privilege grants. Static and role-based —
+   * does NOT do row-conditional field visibility (that's `.masks()` /
+   * `.projection()`, deferred to Phase 2 per ADR-0004).
+   *
+   *   guard.model('Workbench').columnPrivileges({
+   *     apiKey: { select: ['app_system'], update: ['app_system'] },
+   *     internalNotes: { select: ['app_system', 'app_admin'] },
+   *   });
+   *
+   * Repeated calls merge by column: the same column declared in two calls
+   * has its verb-arrays unioned. Different columns in different calls
+   * accumulate. This lets multiple files contribute column rules for the
+   * same model without trampling.
+   */
+  columnPrivileges(
+    spec: Record<
+      string,
+      {
+        select?: ReadonlyArray<TDbRoles>
+        insert?: ReadonlyArray<TDbRoles>
+        update?: ReadonlyArray<TDbRoles>
+      }
+    >
+  ): this {
+    for (const [columnName, grant] of Object.entries(spec)) {
+      if (columnName.length === 0) {
+        throw new Error(
+          `[prisma-guarddog] ModelBuilder("${this.modelName}").columnPrivileges(): column name must be a non-empty string.`
+        )
+      }
+      const prior = this._columnPrivileges.get(columnName)
+      const merged: ColumnPrivilegeGrant = Object.freeze({
+        select: Object.freeze(mergeUnique(prior?.select, grant.select)),
+        insert: Object.freeze(mergeUnique(prior?.insert, grant.insert)),
+        update: Object.freeze(mergeUnique(prior?.update, grant.update)),
+      })
+      this._columnPrivileges.set(columnName, merged)
+    }
+    return this
+  }
+
+  /**
+   * @internal — produces the per-model ColumnPrivilegeAst, or undefined if no
+   * column rules were declared.
+   */
+  _toColumnPrivilegeAst(): ColumnPrivilegeAst | undefined {
+    if (this._columnPrivileges.size === 0) return undefined
+    const columns: Record<string, ColumnPrivilegeGrant> = {}
+    for (const [col, grant] of this._columnPrivileges) {
+      columns[col] = grant
+    }
+    return Object.freeze({
+      model: this.modelName,
+      table: this._table,
+      columns: Object.freeze(columns),
+    })
   }
 
   /**
@@ -161,6 +294,7 @@ export class PolicyBuilder<TClaimsShape extends ClaimsShape, TDbRoles extends st
   private _insert: InsertSpec | undefined
   private _update: UpdateSpec | undefined
   private _delete: DeleteSpec | undefined
+  private readonly _todos: string[] = []
 
   constructor(
     private readonly _guard: Guarddog<TClaimsShape, TDbRoles>,
@@ -211,6 +345,56 @@ export class PolicyBuilder<TClaimsShape extends ClaimsShape, TDbRoles extends st
   }
 
   /**
+   * Drop a raw-SQL string in as the entire predicate for one verb. Primarily
+   * used by the scaffold importer (see ADR-0012) to wrap existing
+   * hand-written policies as `Expr.raw` while preserving coverage. Also
+   * available to hand-tune to during migration.
+   *
+   * UPDATE rawSql uses the same SQL for both USING and WITH CHECK; if the
+   * two clauses must differ, call `.update({ using, check })` with
+   * `p.raw(...)` inside each predicate function instead.
+   */
+  rawSql(verb: Verb, sql: string): this {
+    if (sql.length === 0) {
+      throw new Error(
+        `[prisma-guarddog] PolicyBuilder("${this.modelName}::${this.dbRole}").rawSql("${verb}"): sql must be a non-empty string.`
+      )
+    }
+    const rawExpr: Expr = Object.freeze({ kind: 'raw', sql })
+    switch (verb) {
+      case 'select':
+        this._select = Object.freeze({ using: rawExpr })
+        break
+      case 'insert':
+        this._insert = Object.freeze({ check: rawExpr })
+        break
+      case 'update':
+        this._update = Object.freeze({ using: rawExpr, check: rawExpr })
+        break
+      case 'delete':
+        this._delete = Object.freeze({ using: rawExpr })
+        break
+    }
+    return this
+  }
+
+  /**
+   * Attach a TODO marker to this policy. Emits as a SQL comment on the
+   * generated migration and is flagged by the lint extension as
+   * work-in-progress. Used by the scaffold importer to mark "replace raw
+   * SQL with typed predicates" and similar follow-ups.
+   */
+  todo(message: string): this {
+    if (message.length === 0) {
+      throw new Error(
+        `[prisma-guarddog] PolicyBuilder("${this.modelName}::${this.dbRole}").todo(): message must be a non-empty string.`
+      )
+    }
+    this._todos.push(message)
+    return this
+  }
+
+  /**
    * @internal — emit the immutable AST for this policy. Called by
    * `Guarddog.getPolicies()`.
    */
@@ -223,12 +407,21 @@ export class PolicyBuilder<TClaimsShape extends ClaimsShape, TDbRoles extends st
       insert: this._insert,
       update: this._update,
       delete: this._delete,
+      todos: Object.freeze([...this._todos]),
     })
   }
 }
 
 function policyKey(model: string, dbRole: string): string {
   return `${model}::${dbRole}`
+}
+
+function mergeUnique<T extends string>(prior: ReadonlyArray<T> | undefined, next: ReadonlyArray<T> | undefined): T[] {
+  const seen = new Set<T>(prior ?? [])
+  if (next !== undefined) {
+    for (const item of next) seen.add(item)
+  }
+  return [...seen]
 }
 
 function freezeExprDeep(expr: Expr): Expr {

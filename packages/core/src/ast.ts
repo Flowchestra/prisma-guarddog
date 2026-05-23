@@ -62,6 +62,10 @@ export interface DeleteSpec {
  * A complete policy: one (model, dbRole) pair with any subset of verbs.
  * Multiple PolicyAsts for the same model are normal — typically one per
  * dbRole, sometimes multiple per role for distinct CRUD subsets.
+ *
+ * `todos` carries `.todo()` markers added during authoring (typically by the
+ * scaffold importer). They emit as SQL comments and the lint extension flags
+ * non-empty `todos` arrays as work-in-progress.
  */
 export interface PolicyAst {
   readonly model: string
@@ -71,4 +75,36 @@ export interface PolicyAst {
   readonly insert: InsertSpec | undefined
   readonly update: UpdateSpec | undefined
   readonly delete: DeleteSpec | undefined
+  readonly todos: ReadonlyArray<string>
+}
+
+/**
+ * Per-column, per-verb privilege grants. Compiles to `GRANT SELECT(col) ON
+ * table TO role` / `REVOKE ...` DDL via `@prisma-guarddog/emitter-postgres-
+ * column-privileges`. Role-based and **static** — independent of row content.
+ *
+ * Row-conditional field visibility (`.masks()` / `.projection()`) is a
+ * distinct primitive scheduled for Phase 2 (see ADR-0004).
+ */
+export interface ColumnPrivilegeAst {
+  readonly model: string
+  readonly table: string | undefined
+  readonly columns: Readonly<Record<string, ColumnPrivilegeGrant>>
+}
+
+export interface ColumnPrivilegeGrant {
+  readonly select: ReadonlyArray<string>
+  readonly insert: ReadonlyArray<string>
+  readonly update: ReadonlyArray<string>
+}
+
+/**
+ * Explicit coverage opt-out for a Prisma model. The lint extension treats a
+ * Prisma model as covered if it has at least one `PolicyAst`, OR a
+ * `NoPolicyAst` with a non-empty reason. Forcing a `reason` makes the
+ * decision auditable — a NoPolicy is a real decision, not a forgotten one.
+ */
+export interface NoPolicyAst {
+  readonly model: string
+  readonly reason: string
 }

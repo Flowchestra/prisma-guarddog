@@ -31,10 +31,13 @@ export { col, FluentExpr, PredicateBuilder } from './predicate.js'
 
 export type {
   BinaryOp,
+  ColumnPrivilegeAst,
+  ColumnPrivilegeGrant,
   DeleteSpec,
   Expr,
   InsertSpec,
   LiteralValue,
+  NoPolicyAst,
   PolicyAst,
   SelectSpec,
   UpdateSpec,
