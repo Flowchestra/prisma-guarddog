@@ -48,17 +48,17 @@
   "publishConfig": {
     "access": "public",
     "main": "./dist/index.cjs",
-    "module": "./dist/index.js",
-    "types": "./dist/index.d.ts",
+    "module": "./dist/index.mjs",
+    "types": "./dist/index.d.mts",
     "exports": {
       ".": {
-        "types": "./dist/index.d.ts",
-        "import": "./dist/index.js",
+        "types": "./dist/index.d.mts",
+        "import": "./dist/index.mjs",
         "require": "./dist/index.cjs"
       },
       "./config": {
-        "types": "./dist/config.d.ts",
-        "import": "./dist/config.js",
+        "types": "./dist/config.d.mts",
+        "import": "./dist/config.mjs",
         "require": "./dist/config.cjs"
       }
     }

@@ -42,4 +42,11 @@ async function main(): Promise<void> {
   }
 }
 
-await main()
+// Note: avoid top-level await — tsdown's CJS output doesn't support it.
+// The `.catch()` here is defensive; `main()` itself catches inside, but
+// any synchronous setup error in commander's `.parseAsync` chain would
+// otherwise surface as an unhandled rejection.
+main().catch((err: unknown) => {
+  process.stderr.write(`${pc.red('error:')} ${(err as Error).message}\n`)
+  process.exit(1)
+})
