@@ -15,6 +15,12 @@
  * polymorphic-synthetic.e2e.test.ts: `renderOps` is a CLI-package export.
  *
  * Skipped unless `GUARDDOG_E2E=1` + `GUARDDOG_DATABASE_URL` are set.
+ *
+ * **Role naming convention for parallel e2e files:** vitest runs test files
+ * in the same package in parallel, all hitting the same Postgres database.
+ * Each e2e file must namespace its CREATE/DROP ROLE statements to avoid
+ * racing with peers — here we use `grant_table_user` instead of the
+ * generic `app_user` so we can't collide with polymorphic-synthetic.
  */
 
 import {
@@ -102,9 +108,9 @@ const TEARDOWN_SQL = `
   DROP TABLE IF EXISTS resource_grant, workspace_grant, grant_tenant_record, grant_workspace CASCADE;
   DO $$
   BEGIN
-    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_user') THEN
-      EXECUTE 'DROP OWNED BY app_user CASCADE';
-      EXECUTE 'DROP ROLE app_user';
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'grant_table_user') THEN
+      EXECUTE 'DROP OWNED BY grant_table_user CASCADE';
+      EXECUTE 'DROP ROLE grant_table_user';
     END IF;
   END
   $$;
@@ -116,7 +122,7 @@ function buildGuard() {
       accessor: 'request.jwt.claims',
       shape: (c) => ({ sub: c.uuid(), tenantId: c.uuid() }),
     }),
-    dbRoles: defineDbRoles({ app_user: { inherits: [], nologin: true } }),
+    dbRoles: defineDbRoles({ grant_table_user: { inherits: [], nologin: true } }),
     appRoles: defineAppRoles({}),
     resources: defineResources({}),
     resourceGrants: defineResourceGrants({
@@ -153,7 +159,7 @@ describe.skipIf(!enabled)('table-backed resourceGrants E2E (alpha.2)', () => {
     const guard = buildGuard()
     guard
       .model('GrantWorkspace')
-      .policy('app_user')
+      .policy('grant_table_user')
       .select((p) =>
         p
           .claim('tenantId')
@@ -162,7 +168,7 @@ describe.skipIf(!enabled)('table-backed resourceGrants E2E (alpha.2)', () => {
       )
     guard
       .model('GrantTenantRecord')
-      .policy('app_user')
+      .policy('grant_table_user')
       .select((p) =>
         p
           .claim('tenantId')
@@ -178,13 +184,13 @@ describe.skipIf(!enabled)('table-backed resourceGrants E2E (alpha.2)', () => {
     for (const stmt of sql) {
       await owner.query(stmt)
     }
-    await owner.query('GRANT SELECT ON grant_workspace, grant_tenant_record TO app_user')
-    // The grant tables themselves must be readable by app_user so the EXISTS
+    await owner.query('GRANT SELECT ON grant_workspace, grant_tenant_record TO grant_table_user')
+    // The grant tables themselves must be readable by grant_table_user so the EXISTS
     // sub-query can see them; in a real deployment these would be RLS'd in
     // their own right, but the simplest convincing test grants table-level
     // SELECT and trusts the row-level joins.
-    await owner.query('GRANT SELECT ON workspace_grant, resource_grant TO app_user')
-    await owner.query('GRANT USAGE ON SCHEMA public TO app_user')
+    await owner.query('GRANT SELECT ON workspace_grant, resource_grant TO grant_table_user')
+    await owner.query('GRANT USAGE ON SCHEMA public TO grant_table_user')
 
     await owner.query(SEED_SQL)
   }, 30_000)
@@ -198,33 +204,49 @@ describe.skipIf(!enabled)('table-backed resourceGrants E2E (alpha.2)', () => {
 
   describe('per-resource table (workspace_grant)', () => {
     it('user with a grant row sees the workspace', async () => {
-      await withScenario(owner, { role: 'app_user', claims: { sub: USER_GRANTED, tenantId: TENANT } }, async (db) => {
-        const result = await assertAllowed(db.query<{ id: string }>('SELECT id FROM grant_workspace', []))
-        expect(result.rows.map((r) => r.id)).toEqual([WORKSPACE_OK])
-      })
+      await withScenario(
+        owner,
+        { role: 'grant_table_user', claims: { sub: USER_GRANTED, tenantId: TENANT } },
+        async (db) => {
+          const result = await assertAllowed(db.query<{ id: string }>('SELECT id FROM grant_workspace', []))
+          expect(result.rows.map((r) => r.id)).toEqual([WORKSPACE_OK])
+        }
+      )
     })
 
     it('user without a grant row sees nothing', async () => {
-      await withScenario(owner, { role: 'app_user', claims: { sub: USER_OTHER, tenantId: TENANT } }, async (db) => {
-        const result = await assertAllowed(db.query<{ id: string }>('SELECT id FROM grant_workspace', []))
-        expect(result.rows).toHaveLength(0)
-      })
+      await withScenario(
+        owner,
+        { role: 'grant_table_user', claims: { sub: USER_OTHER, tenantId: TENANT } },
+        async (db) => {
+          const result = await assertAllowed(db.query<{ id: string }>('SELECT id FROM grant_workspace', []))
+          expect(result.rows).toHaveLength(0)
+        }
+      )
     })
   })
 
   describe('polymorphic fallback (resource_grant)', () => {
     it('user with a fallback grant sees the tenant-scoped record', async () => {
-      await withScenario(owner, { role: 'app_user', claims: { sub: USER_GRANTED, tenantId: TENANT } }, async (db) => {
-        const result = await assertAllowed(db.query<{ id: string }>('SELECT id FROM grant_tenant_record', []))
-        expect(result.rows.map((r) => r.id)).toEqual([SUBJECT_TENANT_RECORD])
-      })
+      await withScenario(
+        owner,
+        { role: 'grant_table_user', claims: { sub: USER_GRANTED, tenantId: TENANT } },
+        async (db) => {
+          const result = await assertAllowed(db.query<{ id: string }>('SELECT id FROM grant_tenant_record', []))
+          expect(result.rows.map((r) => r.id)).toEqual([SUBJECT_TENANT_RECORD])
+        }
+      )
     })
 
     it('user without a fallback grant sees nothing', async () => {
-      await withScenario(owner, { role: 'app_user', claims: { sub: USER_OTHER, tenantId: TENANT } }, async (db) => {
-        const result = await assertAllowed(db.query<{ id: string }>('SELECT id FROM grant_tenant_record', []))
-        expect(result.rows).toHaveLength(0)
-      })
+      await withScenario(
+        owner,
+        { role: 'grant_table_user', claims: { sub: USER_OTHER, tenantId: TENANT } },
+        async (db) => {
+          const result = await assertAllowed(db.query<{ id: string }>('SELECT id FROM grant_tenant_record', []))
+          expect(result.rows).toHaveLength(0)
+        }
+      )
     })
   })
 })
