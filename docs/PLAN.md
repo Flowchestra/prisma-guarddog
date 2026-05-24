@@ -16,9 +16,9 @@ Scope is **locked**. The exit criteria below are deliberately narrow; do not pro
 
 **Core (`@flowchestra/prisma-guarddog-core`)**
 
-- `defineClaims()`, `defineDbRoles()`, `defineAppRoles()`, `resources()`
-- `new Guarddog({...})` constructor with `.model()`, `.policy()`, `.columnPrivileges()`, `.polymorphic()`, `.noPolicy()`, `.rawSql()` builders
-- `.emit()`, `.diff()`, `.migrate()` lifecycle methods
+- `defineClaims()`, `defineDbRoles()`, `defineAppRoles()`, `defineResources()`, `defineResourceGrants()`, `defineSchema()`
+- `new Guarddog({...})` constructor with `.model()`, `.policy()`, `.columnPrivileges()`, `.polymorphic()`, `.noPolicy()`, `.rawSql()`, `.todo()` builders
+- **Functional lifecycle** — `compileToOps`, `compileToState`, `diffStates`, `applyOps`: pure functions over an Op-union state, not instance methods. See [ADR-0020](./adr/0020-functional-lifecycle-over-op-union.md).
 - Pure typed AST output; no SQL emission in core
 
 **Emitters**
@@ -45,7 +45,7 @@ Scope is **locked**. The exit criteria below are deliberately narrow; do not pro
 
 **CLI**
 
-- `prisma-guarddog` (unscoped) — `guarddog emit / diff / migrate / import`
+- `prisma-guarddog` (unscoped binary name; package `@flowchestra/prisma-guarddog`) — `guarddog check / migrate` shipped; `guarddog emit / diff / import` planned.
 
 **Proof-of-API**
 
@@ -63,7 +63,7 @@ Scope is **locked**. The exit criteria below are deliberately narrow; do not pro
 - 5 proof tables emit idempotent SQL that re-applies as no-op
 - E2E tests pass against real Postgres in CI
 - `pnpm lint`, `pnpm type-check`, `pnpm test`, `pnpm build` all pass at the workspace root
-- ADRs 0001–0017 merged before any Phase 1 implementation lands
+- ADRs 0001–0017 merged before any Phase 1 implementation lands. (Subsequent decisions captured during build: [ADR-0018](./adr/0018-schema-file-as-primary-interface.md) on the schema-file authoring surface, [ADR-0019](./adr/0019-three-permission-layers-and-resource-permissions.md) on the three-permission-layer model superseding the earlier four-primitive framing, and [ADR-0020](./adr/0020-functional-lifecycle-over-op-union.md) on the functional lifecycle.)
 
 ### Phase 2 — Provider and visibility extensions
 
@@ -91,11 +91,11 @@ Tracked in the repo's todo system. High-level sequence:
 1. Cleanup commit (Flowchestra-bootstrap residue) ✓
 2. `docs/` + 17 ADRs ← *we are here*
 3. Turborepo scaffold: `turbo.json`, `pnpm-workspace.yaml`, root `package.json`, `tsconfig.base.json`, `packages/*/package.json` skeletons
-4. Core type primitives: `defineClaims` / `defineDbRoles` / `defineAppRoles` / `resources`
-5. Constructor + policy builders (`.model`, `.policy`, `.columnPrivileges`, `.polymorphic`, `.noPolicy`, `.rawSql`)
+4. Core type primitives: `defineClaims` / `defineDbRoles` / `defineAppRoles` / `defineResources` / `defineResourceGrants` / `defineSchema`
+5. Constructor + policy builders (`.model`, `.policy`, `.columnPrivileges`, `.polymorphic`, `.noPolicy`, `.rawSql`, `.todo`)
 6. Emitters (RLS + column privileges)
-7. `.emit()` / `.diff()` lifecycle in core (forward-replay sidecars)
-8. `.migrate()` in CLI (idempotent SQL + sidecar emission)
+7. Functional lifecycle in core: `compileToOps` / `compileToState` / `diffStates` / `applyOps` (forward-replay sidecars)
+8. `planMigrate` / `runMigrate` in CLI (idempotent SQL + sidecar emission)
 9. Importers (Prisma DMMF + Postgres pg_policies)
 10. Testing extension (real-PG harness)
 11. Lint + Flowchestra preset

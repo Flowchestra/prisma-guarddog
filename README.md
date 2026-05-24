@@ -127,9 +127,17 @@ See [docs/adr/0002-evaluated-and-rejected-alternatives.md](./docs/adr/0002-evalu
 
 ## Status
 
-**Phase 1 implementation complete.** 374 unit tests pass across the workspace; the example schema in `examples/flowchestra` exercises the full compile + render path with deterministic SQL output.
+**Phase 1 implementation complete; internal alpha.** 382 unit tests pass across the workspace; the example schema in `examples/flowchestra` exercises the compile + render path with deterministic SQL output. Currently published as `0.1.0-alpha.0` on GitHub Packages under the `@flowchestra` scope; the `0.1.x` alpha line is internal and expected to carry breaking changes. Public npm distribution is the post-alpha goal.
 
-**Pre-release.** Not yet published to npm.
+### Running the tests
+
+```sh
+pnpm install
+pnpm -r run test     # unit tests, no DB required
+pnpm test:e2e        # boots throwaway postgres:16 via Docker, runs E2E, tears it down
+```
+
+`pnpm test:e2e` is zero-config — Docker is the only dependency. To point at your own database (e.g. local Supabase on port 54322), copy `.env.example` to `.env` and set `GUARDDOG_DATABASE_URL`. **Hosted Supabase will not work** — the suites CREATE/DROP roles, which the hosted `postgres` user lacks privilege for.
 
 ### What's verified vs. what's not
 
@@ -139,7 +147,12 @@ See [docs/adr/0002-evaluated-and-rejected-alternatives.md](./docs/adr/0002-evalu
 | `planMigrate` produces correct ops + SQL | `runMigrate` file-writing path (deferred pending built `dist/`) |
 | Per-package type-check + lint clean | `pnpm -r run build` end-to-end |
 | `loadSchema`'s validate + materialize helpers | The jiti-from-disk path (same `dist/` constraint) |
-| Coverage lint + flowchestra preset | CI workflow (`.github/workflows/` not yet authored) |
+| Coverage lint + flowchestra preset | CI E2E job with Postgres service (release.yml has CI but no PG service yet) |
+| Release pipeline (`.github/workflows/release.yml`) + changesets prerelease mode | `npm publish --dry-run` clean across all 9 packages |
+| `.polymorphic()` builder + unit tests | `.polymorphic()` end-to-end against real Postgres |
+| `pg_policies` importer codegen (unit-level) | Importer scaffold round-trip (real PG → import → load → migrate) |
+| 5 proof-of-API models in `examples/flowchestra` | Plan's 5 scenarios (tenant-only and polymorphic-discriminator coverage still missing; `File.workbenchId` is currently NOT NULL rather than nullable as the plan specifies) |
+| CLI: `guarddog check`, `guarddog migrate` | CLI: `guarddog emit`, `guarddog diff`, `guarddog import` (planned per PLAN.md) |
 
 See [`docs/PLAN.md`](./docs/PLAN.md) for the full phased roadmap and definition of done.
 

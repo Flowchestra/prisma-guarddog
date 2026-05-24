@@ -20,29 +20,34 @@ import { applyOps, compileToOps, compileToState, empty, type Op } from '@flowche
 import { lintCoverage } from '@flowchestra/prisma-guarddog-lint'
 import { describe, expect, it } from 'vitest'
 
-import { buildExampleGuarddog } from './guarddog.js'
+import { buildExampleGuarddog } from '../prisma/guarddog.js'
 
 describe('example flowchestra schema — compile pipeline', () => {
-  it('declares the five representative models', () => {
+  it('declares the seven representative models', () => {
     const guard = buildExampleGuarddog()
     const modelsWithPolicies = new Set(guard.getPolicies().map((p) => p.model))
+    const polymorphicModels = new Set(guard.getPolymorphics().map((p) => p.modelName))
     const noPolicyModels = new Set(guard.getNoPolicies().map((n) => n.model))
+    expect(modelsWithPolicies).toContain('Tenant')
     expect(modelsWithPolicies).toContain('Workspace')
     expect(modelsWithPolicies).toContain('Workbench')
     expect(modelsWithPolicies).toContain('File')
     expect(modelsWithPolicies).toContain('ToolInvocation')
+    expect(polymorphicModels).toContain('Comment')
     expect(noPolicyModels).toContain('MigrationLedger')
   })
 
-  it('passes lintCoverage against the same five-model Prisma list', () => {
+  it('passes lintCoverage against the seven-model Prisma list', () => {
     const guard = buildExampleGuarddog()
     const report = lintCoverage({
       guard,
       prismaModels: [
+        { name: 'Tenant' },
         { name: 'Workspace' },
         { name: 'Workbench' },
         { name: 'File' },
         { name: 'ToolInvocation' },
+        { name: 'Comment' },
         { name: 'MigrationLedger' },
       ],
     })
@@ -77,7 +82,7 @@ describe('example flowchestra schema — compile pipeline', () => {
     const forced = new Set(
       ops.filter((o): o is Extract<Op, { kind: 'force-rls' }> => o.kind === 'force-rls').map((o) => o.table)
     )
-    expect(enabled).toEqual(new Set(['workspace', 'workbench', 'file', 'tool_invocation']))
+    expect(enabled).toEqual(new Set(['tenant', 'workspace', 'workbench', 'file', 'tool_invocation', 'comment']))
     expect(forced).toEqual(enabled)
   })
 

@@ -1,11 +1,15 @@
 name: Release
 
-# Two jobs in one workflow:
-#   - "version-and-publish" runs on every push to main. It either opens / updates
-#     a "Version Packages" PR (when there are unreleased changesets) or, when
-#     that PR has just been merged, publishes the new versions to GitHub Packages.
-#   - "ci" runs on every PR + push so we never publish a version that didn't pass
-#     type-check + lint + test.
+# Three jobs in one workflow:
+#   - "ci" runs on every PR + push: type-check + lint + unit tests + build.
+#   - "e2e" runs on every PR + push against a real Postgres service container,
+#     setting GUARDDOG_E2E=1 and GUARDDOG_DATABASE_URL so the flowchestra
+#     example's end-to-end suite actually exercises RLS semantics. ADR-0013
+#     requires real Postgres for the harness; we satisfy it here.
+#   - "release" runs only on push to main. It either opens / updates a
+#     "Version Packages" PR (when there are unreleased changesets) or, when
+#     that PR has just been merged, publishes the new versions to GitHub
+#     Packages. Gated on both `ci` and `e2e`.
 #
 # Security note: no step interpolates untrusted user input (PR titles, commit
 # messages, etc.) into a run: command. Everything is from secrets, the
@@ -49,7 +53,7 @@ jobs:
         run: pnpm -r run type-check
 
       - name: Lint
-        run: pnpm exec oxlint packages examples
+        run: pnpm lint
 
       - name: Test
         run: pnpm -r run test
@@ -57,9 +61,70 @@ jobs:
       - name: Build
         run: pnpm -r run build
 
+      # Coverage lint against the flowchestra example: every Prisma model must
+      # have .policy() / .polymorphic() / .noPolicy(). This is the bug class
+      # RLS itself cannot catch — a new model silently inheriting a blanket
+      # GRANT because nobody wrote a policy. See @flowchestra/prisma-guarddog-lint.
+      #
+      # Invoked via the built dist/bin.cjs (`Build` step above produced it) —
+      # workspace `bin:` resolution against `./src/bin.ts` doesn't run in pure
+      # Node, so we point at the compiled CJS entry directly.
+      - name: Coverage lint (flowchestra example)
+        run: node packages/cli/dist/bin.cjs check --lint --cwd examples/flowchestra
+
+  e2e:
+    name: e2e
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: guarddog
+          POSTGRES_PASSWORD: guarddog
+          POSTGRES_DB: guarddog_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U guarddog -d guarddog_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://npm.pkg.github.com
+          scope: '@flowchestra'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Single command, same locally and in CI: `pnpm test:e2e` runs
+      # scripts/e2e.sh, which detects GUARDDOG_DATABASE_URL is already set
+      # (from the env block below) and skips booting its own Docker — the
+      # service container above is already providing Postgres on :5432.
+      # Locally with no env vars set, the same command boots a throwaway
+      # postgres:16 container. One mental model for both environments.
+      - name: Run all E2E suites against Postgres
+        run: pnpm test:e2e
+        env:
+          GUARDDOG_E2E: '1'
+          GUARDDOG_DATABASE_URL: postgres://guarddog:guarddog@localhost:5432/guarddog_e2e
+
   release:
     name: release
-    needs: ci
+    needs: [ci, e2e]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:

@@ -43,13 +43,24 @@ You need:
 
    (Or use a repo-local `.npmrc.local` and a wrapper script — the existing `.npmrc` already routes `@flowchestra:*` to GitHub Packages, so the only thing you're adding is the auth line.)
 
-3. **Apply pending changesets** and publish:
+3. **Verify the workspace is releasable**:
 
    ```sh
-   pnpm install                       # ensure deps are resolved
+   pnpm install
+   pnpm -r run type-check             # tsgo across every package
+   pnpm -r run test                   # unit tests, no DB required
+   pnpm test:e2e                      # boots throwaway postgres:16, runs full E2E, tears down
+   pnpm -r run build                  # build dist/ for every package
+   ```
+
+   The CI release gate runs the same set; doing it locally before publishing catches the same things one round-trip earlier.
+
+4. **Apply pending changesets** and publish:
+
+   ```sh
    pnpm exec changeset version        # consumes .changeset/*.md, bumps package.jsons + CHANGELOG.md
    pnpm install                       # refresh lockfile after version bumps
-   pnpm -r run build                  # build dist/ for every package
+   pnpm -r run build                  # rebuild dist/ post-version-bump
    pnpm exec changeset publish        # publishes to GitHub Packages
    git add . && git commit -m "release: <versions>"
    git push --follow-tags

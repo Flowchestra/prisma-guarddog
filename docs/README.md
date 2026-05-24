@@ -63,6 +63,7 @@ All foundational decisions are captured as ADRs in [`adr/`](./adr/). Read [`adr/
 | 0007 | [Forward-replay state derivation](./adr/0007-forward-replay-state-derivation.md)                            |
 | 0008 | [Idempotent DDL emission](./adr/0008-idempotent-ddl-emission.md)                                            |
 | 0010 | [Migrations colocate with Prisma](./adr/0010-migrations-colocate-with-prisma.md)                            |
+| 0020 | [Functional lifecycle over an Op-union state](./adr/0020-functional-lifecycle-over-op-union.md)             |
 
 ### Repo + extension model
 

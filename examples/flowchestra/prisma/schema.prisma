@@ -1,11 +1,19 @@
 // Reference schema for the example-flowchestra package. Not consumed by
 // Prisma itself in this repo (no generator output, no database) — it's the
-// Prisma side of the contract the guarddog policies in src/guarddog.ts
+// Prisma side of the contract the guarddog policies in prisma/guarddog.ts
 // are written against.
 //
-// Five models, three layers: tenant -> workspace -> workbench, plus File
-// (owned), ToolInvocation (system-written), and MigrationLedger (opted out
-// via noPolicy).
+// Seven models exercising the full Phase 1 scenario set from docs/PLAN.md:
+//
+//   Tenant           tenant-scoped only (no further hierarchy below tenant)
+//   Workspace        workspace-scoped + role-gated mutations
+//   Workbench        cascaded grant from parent Workspace
+//   File             owner OR workbench-grant + column REVOKE; workbenchId
+//                    is NULLABLE (loose files attached only to the tenant)
+//   ToolInvocation   system-only writes (BYPASSRLS); read-only for users
+//   Comment          polymorphic discriminator: subjectType/subjectId fans
+//                    out across Workspace / Workbench / File
+//   MigrationLedger  noPolicy() opt-out — auditable "no row policy"
 
 datasource db {
   provider = "postgresql"
@@ -16,20 +24,27 @@ generator client {
   provider = "prisma-client-js"
 }
 
+model Tenant {
+  id   String @id @default(uuid()) @db.Uuid
+  name String
+
+  @@map("tenant")
+}
+
 model Workspace {
-  id        String     @id @default(uuid()) @db.Uuid
-  tenantId  String     @db.Uuid
-  name      String
+  id          String      @id @default(uuid()) @db.Uuid
+  tenantId    String      @db.Uuid
+  name        String
   workbenches Workbench[]
 
   @@index([tenantId])
 }
 
 model Workbench {
-  id          String     @id @default(uuid()) @db.Uuid
-  tenantId    String     @db.Uuid
-  workspaceId String     @db.Uuid
-  workspace   Workspace  @relation(fields: [workspaceId], references: [id])
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @db.Uuid
+  workspaceId String    @db.Uuid
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
   name        String
   files       File[]
 
@@ -38,11 +53,13 @@ model Workbench {
 }
 
 model File {
-  id               String    @id @default(uuid()) @db.Uuid
-  tenantId         String    @db.Uuid
-  workbenchId      String    @db.Uuid
-  workbench        Workbench @relation(fields: [workbenchId], references: [id])
-  ownerId          String    @db.Uuid
+  id               String     @id @default(uuid()) @db.Uuid
+  tenantId         String     @db.Uuid
+  // Nullable: files can be attached directly to a tenant before being
+  // pulled into a workbench. See PLAN.md scenario (c).
+  workbenchId      String?    @db.Uuid
+  workbench        Workbench? @relation(fields: [workbenchId], references: [id])
+  ownerId          String     @db.Uuid
   name             String
   storageKey       String
   embeddingPayload Json?
@@ -57,6 +74,21 @@ model ToolInvocation {
   tool     String
 
   @@map("tool_invocation")
+}
+
+model Comment {
+  id          String @id @default(uuid()) @db.Uuid
+  tenantId    String @db.Uuid
+  // Discriminator: one of 'Workspace' / 'Workbench' / 'File'. The
+  // polymorphic policy fans out per value and prepends the equality
+  // check to each per-target predicate.
+  subjectType String
+  subjectId   String @db.Uuid
+  body        String
+
+  @@index([tenantId])
+  @@index([subjectType, subjectId])
+  @@map("comment")
 }
 
 model MigrationLedger {

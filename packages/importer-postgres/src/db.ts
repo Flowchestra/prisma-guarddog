@@ -95,7 +95,13 @@ interface RawPolicyRow {
   readonly tablename: string
   readonly policyname: string
   readonly permissive: 'PERMISSIVE' | 'RESTRICTIVE' | boolean
-  readonly roles: ReadonlyArray<string>
+  /**
+   * As returned by `pg_policies.roles` (column type `name[]`). Node-postgres
+   * parses most array columns into JS arrays automatically, but the `name[]`
+   * type often arrives as a raw Postgres array literal (`{role1,role2}`).
+   * `normalizePolicyRow` handles both shapes via `parseRolesField`.
+   */
+  readonly roles: ReadonlyArray<string> | string
   readonly cmd: string
   readonly qual: string | null
   readonly with_check: string | null
@@ -116,10 +122,37 @@ function normalizePolicyRow(row: RawPolicyRow): ImportedPolicyRow {
     table: row.tablename,
     policyName: row.policyname,
     command: isPolicyCommand(cmd) ? cmd : 'ALL',
-    roles: Object.freeze([...row.roles]),
+    roles: Object.freeze(parseRolesField(row.roles)),
     usingExpression: row.qual,
     withCheckExpression: row.with_check,
     permissive: row.permissive === 'PERMISSIVE' || row.permissive === true,
+  })
+}
+
+/**
+ * Coerce `pg_policies.roles` into a `string[]`. Node-postgres returns this
+ * column either as a JS array (when the `name[]` type parser is wired) or
+ * as a raw Postgres array literal `{role1,role2,"quoted role"}`. We accept
+ * both; the literal form is parsed minimally — comma-split with unwrapping
+ * of double-quoted entries. Role names containing literal commas or
+ * backslashes inside quotes are not supported (Postgres role names are
+ * identifiers, which excludes those characters in practice).
+ */
+function parseRolesField(value: ReadonlyArray<string> | string): string[] {
+  if (Array.isArray(value)) return [...value]
+  if (typeof value !== 'string') return []
+  const trimmed = value.trim()
+  if (trimmed.length === 0) return []
+  if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) {
+    // Single bare role name without array wrapping — treat as one entry.
+    return [trimmed]
+  }
+  const inner = trimmed.slice(1, -1)
+  if (inner.length === 0) return []
+  return inner.split(',').map((part) => {
+    const t = part.trim()
+    if (t.startsWith('"') && t.endsWith('"')) return t.slice(1, -1)
+    return t
   })
 }
 

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -132,5 +132,93 @@ describe('runCheck (file-not-found path)', () => {
     const result = await runCheck({ config, stdout: false })
     expect(result.ok).toBe(false)
     expect(result.diagnostics[0]).toMatch(/schema file not found/)
+  })
+})
+
+describe('runCheck (--lint coverage)', () => {
+  const SCHEMA_SOURCE = `
+import {
+  col,
+  defineAppRoles,
+  defineClaims,
+  defineDbRoles,
+  defineResources,
+  defineSchema,
+} from '@flowchestra/prisma-guarddog-core'
+
+export default defineSchema({
+  claims: defineClaims({ accessor: 'x', shape: (c) => ({ sub: c.uuid() }) }),
+  dbRoles: defineDbRoles({ app_user: { inherits: [] } }),
+  appRoles: defineAppRoles({}),
+  resources: defineResources({ Tenant: { model: 'Tenant', id: 'id' } }),
+  policies(g) {
+    g.model('Covered')
+      .policy('app_user')
+      .select((p) => p.literal(true))
+  },
+})
+`
+
+  const PRISMA_SCHEMA = `
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+generator client {
+  provider = "prisma-client-js"
+}
+model Covered {
+  id String @id
+}
+model Uncovered {
+  id String @id
+}
+`
+
+  it('returns ok=false when a Prisma model has no policy/polymorphic/noPolicy', async () => {
+    const schemaPath = join(workDir, 'guarddog-lint.ts')
+    const prismaSchemaPath = join(workDir, 'schema.prisma')
+    writeFileSync(schemaPath, SCHEMA_SOURCE, 'utf8')
+    writeFileSync(prismaSchemaPath, PRISMA_SCHEMA, 'utf8')
+
+    const config = resolveConfig({
+      cwd: workDir,
+      overrides: { schemaPath, prismaSchemaPath },
+    })
+    const result = await runCheck({ config, lint: true, stdout: false })
+    expect(result.ok).toBe(false)
+    expect(result.diagnostics.some((d) => /missing-coverage.*Uncovered/.test(d))).toBe(true)
+    expect(result.lintIssues).toBeDefined()
+    expect(result.lintIssues!.some((i) => i.modelName === 'Uncovered' && i.severity === 'error')).toBe(true)
+  })
+
+  it('returns ok=true when every Prisma model is covered', async () => {
+    const schemaPath = join(workDir, 'guarddog-lint-ok.ts')
+    const prismaSchemaPath = join(workDir, 'schema-ok.prisma')
+    writeFileSync(schemaPath, SCHEMA_SOURCE, 'utf8')
+    writeFileSync(
+      prismaSchemaPath,
+      `datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+generator client {
+  provider = "prisma-client-js"
+}
+model Covered {
+  id String @id
+}
+`,
+      'utf8'
+    )
+
+    const config = resolveConfig({
+      cwd: workDir,
+      overrides: { schemaPath, prismaSchemaPath },
+    })
+    const result = await runCheck({ config, lint: true, stdout: false })
+    expect(result.ok).toBe(true)
+    expect(result.lintIssues).toBeDefined()
+    expect(result.lintIssues!.filter((i) => i.severity === 'error')).toHaveLength(0)
   })
 })

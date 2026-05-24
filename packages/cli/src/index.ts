@@ -19,6 +19,15 @@ export type { CheckOptions, CheckResult } from './commands/check.js'
 export { planMigrate, runMigrate } from './commands/migrate.js'
 export type { MigrateOptions, MigratePlan, MigrateResult } from './commands/migrate.js'
 
+export { runEmit } from './commands/emit.js'
+export type { EmitOptions, EmitResult } from './commands/emit.js'
+
+export { runDiff } from './commands/diff.js'
+export type { DiffOptions, DiffResult } from './commands/diff.js'
+
+export { runImport } from './commands/import.js'
+export type { ImportOptions, ImportResult } from './commands/import.js'
+
 export { renderOps } from './render-ops.js'
 export type { RenderContext } from './render-ops.js'
 

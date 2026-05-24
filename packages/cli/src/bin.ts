@@ -2,13 +2,13 @@
 /**
  * `prisma-guarddog` CLI entrypoint. Routes subcommands via commander.
  *
- * Currently:
+ * Subcommands:
  *   guarddog check     — validate the schema file loads + materializes
- *
- * Coming soon (depends on the .emit/.diff/.migrate lifecycle):
- *   guarddog generate  — emit DMMF-bridged autocomplete types
- *   guarddog migrate   — produce a timestamped migration + sidecar
- *   guarddog import    — scaffold-mode import from a live database
+ *                        (--lint also fails on missing-coverage models)
+ *   guarddog migrate   — diff vs sidecars and write a new migration folder
+ *   guarddog emit      — render full schema as SQL to stdout (or --out file)
+ *   guarddog diff      — preview what the next migrate would emit, no writes
+ *   guarddog import    — scaffold a guarddog.ts from a live database
  */
 
 import { Command } from 'commander'
@@ -16,6 +16,9 @@ import pc from 'picocolors'
 
 import pkg from '../package.json' with { type: 'json' }
 import { runCheck } from './commands/check.js'
+import { runDiff } from './commands/diff.js'
+import { runEmit } from './commands/emit.js'
+import { runImport } from './commands/import.js'
 import { runMigrate } from './commands/migrate.js'
 import { discoverConfig } from './config.js'
 
@@ -30,9 +33,13 @@ async function main(): Promise<void> {
     .command('check')
     .description('Validate the schema file loads, materializes, and yields a Guarddog instance.')
     .option('--cwd <path>', 'override the working directory used for config discovery')
-    .action(async (opts: { cwd?: string }) => {
+    .option('--lint', 'also cross-reference Prisma models for missing-coverage (fails on gaps)')
+    .action(async (opts: { cwd?: string; lint?: boolean }) => {
       const config = await discoverConfig(opts.cwd ?? process.cwd())
-      const result = await runCheck({ config })
+      const result = await runCheck({
+        config,
+        ...(opts.lint === true && { lint: true }),
+      })
       process.exit(result.ok ? 0 : 1)
     })
 
@@ -44,6 +51,49 @@ async function main(): Promise<void> {
     .action(async (opts: { cwd?: string; slug?: string }) => {
       const config = await discoverConfig(opts.cwd ?? process.cwd())
       const result = await runMigrate({ config, ...(opts.slug !== undefined && { slug: opts.slug }) })
+      process.exit(result.ok ? 0 : 1)
+    })
+
+  program
+    .command('emit')
+    .description('Render the full schema as SQL to stdout (or --out file). Read-only; touches no migrations.')
+    .option('--cwd <path>', 'override the working directory used for config discovery')
+    .option('--out <path>', 'write the SQL to this file instead of stdout')
+    .action(async (opts: { cwd?: string; out?: string }) => {
+      const config = await discoverConfig(opts.cwd ?? process.cwd())
+      const result = await runEmit({
+        config,
+        ...(opts.out !== undefined && { out: opts.out }),
+      })
+      process.exit(result.ok ? 0 : 1)
+    })
+
+  program
+    .command('diff')
+    .description('Show what `guarddog migrate` would emit, without writing anything.')
+    .option('--cwd <path>', 'override the working directory used for config discovery')
+    .option('--exit-code', 'exit non-zero when there are pending changes (CI gate)')
+    .action(async (opts: { cwd?: string; exitCode?: boolean }) => {
+      const config = await discoverConfig(opts.cwd ?? process.cwd())
+      const result = await runDiff({
+        config,
+        ...(opts.exitCode === true && { exitCode: true }),
+      })
+      process.exit(result.ok ? 0 : 1)
+    })
+
+  program
+    .command('import')
+    .description('Scaffold a guarddog.ts from an existing Postgres database. Output is rawSql() + .todo() stubs.')
+    .requiredOption('--url <connection>', 'Postgres connection string (postgres://user:pass@host:port/db)')
+    .option('--schema <name>', 'restrict to one Postgres schema (default: public)')
+    .option('--out <path>', 'write the scaffold to this file instead of stdout')
+    .action(async (opts: { url: string; schema?: string; out?: string }) => {
+      const result = await runImport({
+        url: opts.url,
+        ...(opts.schema !== undefined && { schema: opts.schema }),
+        ...(opts.out !== undefined && { out: opts.out }),
+      })
       process.exit(result.ok ? 0 : 1)
     })
 

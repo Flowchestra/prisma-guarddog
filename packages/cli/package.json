@@ -26,7 +26,8 @@
   "exports": {
     ".": {
       "types": "./src/index.ts",
-      "import": "./src/index.ts"
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
     }
   },
   "files": [
@@ -56,11 +57,20 @@
   },
   "peerDependencies": {
     "@prisma/internals": ">=6.0.0",
+    "pg": ">=8.0.0",
     "prisma": ">=6.0.0"
   },
+  "peerDependenciesMeta": {
+    "pg": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@flowchestra/prisma-guarddog-testing-postgres": "workspace:*",
     "@prisma/internals": "^6.0.0",
     "@types/node": "^22.10.0",
+    "@types/pg": "^8.11.10",
+    "pg": "^8.13.1",
     "prisma": "^6.0.0"
   },
   "publishConfig": {

@@ -20,6 +20,7 @@
     "format:check": "oxfmt --check",
     "test": "turbo run test",
     "test:watch": "turbo run test:watch",
+    "test:e2e": "bash scripts/e2e.sh",
     "clean": "turbo run clean && rm -rf node_modules .turbo",
     "changeset": "changeset",
     "changeset:version": "changeset version",
