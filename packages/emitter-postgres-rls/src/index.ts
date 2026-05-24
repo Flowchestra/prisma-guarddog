@@ -20,6 +20,7 @@ export {
   compileExpr,
   defaultCompileHasAppRole,
   defaultCompileHasGrant,
+  defaultCompileHasGrantTable,
   defaultCompileHasResourcePermission,
   defaultCompileIsOwner,
 } from './compile-expr.js'

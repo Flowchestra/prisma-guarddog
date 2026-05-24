@@ -127,7 +127,7 @@ See [docs/adr/0002-evaluated-and-rejected-alternatives.md](./docs/adr/0002-evalu
 
 ## Status
 
-**Phase 1 implementation complete; internal alpha.** 382 unit tests pass across the workspace; the example schema in `examples/flowchestra` exercises the compile + render path with deterministic SQL output. Currently published as `0.1.0-alpha.0` on GitHub Packages under the `@flowchestra` scope; the `0.1.x` alpha line is internal and expected to carry breaking changes. Public npm distribution is the post-alpha goal.
+**Phase 1 implementation complete; internal alpha.** 382 unit tests + 13 real-Postgres E2E scenarios pass across the workspace. Currently published as `0.1.0-alpha.1` on GitHub Packages under the `@flowchestra` scope; the `0.1.x` alpha line is internal and expected to carry breaking changes. Public npm distribution is the post-alpha goal. **Rough edges are expected — adopting consumers will find them, and that's the point of the alpha.**
 
 ### Running the tests
 
@@ -143,22 +143,34 @@ pnpm test:e2e        # boots throwaway postgres:16 via Docker, runs E2E, tears i
 
 | Verified | Not yet verified |
 | --- | --- |
-| DSL, compile pipeline, diff, render, sidecar replay (374 unit tests) | Real-Postgres semantic enforcement (E2E gated behind `GUARDDOG_E2E=1`) |
-| `planMigrate` produces correct ops + SQL | `runMigrate` file-writing path (deferred pending built `dist/`) |
-| Per-package type-check + lint clean | `pnpm -r run build` end-to-end |
-| `loadSchema`'s validate + materialize helpers | The jiti-from-disk path (same `dist/` constraint) |
-| Coverage lint + flowchestra preset | CI E2E job with Postgres service (release.yml has CI but no PG service yet) |
-| Release pipeline (`.github/workflows/release.yml`) + changesets prerelease mode | `npm publish --dry-run` clean across all 9 packages |
-| `.polymorphic()` builder + unit tests | `.polymorphic()` end-to-end against real Postgres |
-| `pg_policies` importer codegen (unit-level) | Importer scaffold round-trip (real PG → import → load → migrate) |
-| 5 proof-of-API models in `examples/flowchestra` | Plan's 5 scenarios (tenant-only and polymorphic-discriminator coverage still missing; `File.workbenchId` is currently NOT NULL rather than nullable as the plan specifies) |
-| CLI: `guarddog check`, `guarddog migrate` | CLI: `guarddog emit`, `guarddog diff`, `guarddog import` (planned per PLAN.md) |
+| DSL, compile pipeline, diff, render, sidecar replay (382 unit tests) | `runMigrate` file-writing path (no test exercises the actual filesystem emit yet) |
+| Real-Postgres semantic enforcement (13 E2E scenarios via `pnpm test:e2e`) | `npm publish --dry-run` clean across all 9 packages (pack + install harness pending; tracked with the publishing flow) |
+| `planMigrate` produces correct ops + SQL | Bin smoke against a fresh CWD (`node packages/cli/dist/bin.cjs` from outside the workspace — same blocker as the publish dry-run) |
+| Per-package type-check + lint clean; workspace `pnpm -r run build` end-to-end in CI | |
+| `loadSchema`'s validate + materialize helpers (incl. jiti-from-disk) | |
+| Coverage lint, flowchestra preset, and the example schema's canonical `defineSchema` form | |
+| Release pipeline (`.github/workflows/release.yml`) + changesets prerelease mode + CI E2E job with `postgres:16` service container | |
+| `.polymorphic()` end-to-end against real Postgres (flowchestra example + synthetic discriminator) | |
+| Importer scaffold round-trip: real PG → `runImport` → `loadSchema` → materialized Guarddog | |
+| 7 proof-of-API models in `examples/flowchestra` covering every Phase 1 scenario in PLAN.md (tenant-only, workspace+role, workbench cascade, nullable-workbench file, owner pattern, polymorphic, opted-out noPolicy) | |
+| Idempotent re-apply of rendered SQL (`pg_policies` + `pg_roles` snapshot unchanged after second apply) | |
+| CLI: `guarddog check` (incl. `--lint`), `migrate`, `emit`, `diff`, `import` | |
 
 See [`docs/PLAN.md`](./docs/PLAN.md) for the full phased roadmap and definition of done.
 
+### Phase 1 known constraints
+
+Two things consumers will hit. Neither is a showstopper, but pretending they don't exist would set bad expectations.
+
+1. **`.columnPrivileges()` declarations are not self-enforcing.** The emitter grants to the declared role but does not revoke from anyone else. Any pre-existing table-wide `GRANT SELECT ... TO some_role` will override what the column-privilege declaration looks like it's locking down. Workaround: scope base-table grants by column (or issue REVOKEs in the prelude). The flowchestra example documents the pattern inline. Tracked as [issue #2](https://github.com/Flowchestra/prisma-guarddog/issues/2) with three design options for the fix.
+
+2. **No publish dry-run gate yet.** Packaging looks correct (every package has `publishConfig` + `files` set), and recent versions published cleanly via the changesets workflow. But the workspace dev exports field (which points at `./src/index.ts` so jiti and vitest both work) interferes with a pack-and-install smoke test from outside the tree. The proper fix lives in the publish dry-run harness; the bin works correctly when consumed from a real installation.
+
+> **Note:** `resourceGrants.source: 'table'` (per-resource overrides + polymorphic fallback) shipped in `0.1.0-alpha.2`. See [ADR-0021](./docs/adr/0021-table-backed-resource-grants.md) for the API design.
+
 ## Roadmap
 
-- **Phase 2** — FDW table support, row-conditional field masking (`.masks()` / `.projection()`), Supabase-specific importer, table-backed `resourceGrants` source.
+- **Phase 2** — FDW table support, row-conditional field masking (`.masks()` / `.projection()`), Supabase-specific importer. (Table-backed `resourceGrants` source originally tracked here shipped in `0.1.0-alpha.2`.)
 - **Phase 3** — WorkOS FGA bridge (actions → composable roles → grant cascade).
 
 ## Documentation

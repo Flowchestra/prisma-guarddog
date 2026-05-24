@@ -16,6 +16,8 @@ import type {
   ClaimsDefinition,
   ClaimsShape,
   Expr,
+  PerResourceGrantTable,
+  PolymorphicGrantTable,
   ResourceGrantsDefinition,
 } from '@flowchestra/prisma-guarddog-core'
 
@@ -102,8 +104,17 @@ export function compileExpr(expr: Expr, ctx: ExprCompileCtx): string {
     }
     case 'hasGrant': {
       const scopeColumnRef = formatColumnRef(expr.scopeColumn, ctx)
-      const compiler = ctx.compileHasGrant ?? defaultCompileHasGrant
-      return compiler(expr.action, scopeColumnRef, ctx)
+      // Explicit override always wins. Otherwise dispatch by source: 'table'
+      // routes to defaultCompileHasGrantTable (EXISTS against the configured
+      // grant table); 'claims' or undefined fall through to the jsonb-claim
+      // compiler.
+      if (ctx.compileHasGrant !== undefined) {
+        return ctx.compileHasGrant(expr.action, scopeColumnRef, ctx)
+      }
+      if (ctx.resourceGrants?.source === 'table') {
+        return defaultCompileHasGrantTable(expr.action, expr.scopeColumn, scopeColumnRef, ctx)
+      }
+      return defaultCompileHasGrant(expr.action, scopeColumnRef, ctx)
     }
     case 'hasResourcePermission': {
       const jsonbColumnRef = formatColumnRef(expr.jsonbColumn, ctx)
@@ -201,8 +212,125 @@ export const defaultCompileHasAppRole: HasAppRoleCompiler = (role, ctx) => {
  */
 export const defaultCompileHasGrant: HasGrantCompiler = (action, scopeColumnRef, ctx) => {
   const accessorLit = quoteString(ctx.claims.accessor)
-  const claimPath = ctx.resourceGrants?.claimPath ?? 'grants'
+  const claimPath = ctx.resourceGrants?.source === 'claims' ? ctx.resourceGrants.claimPath : 'grants'
   return `((current_setting(${accessorLit}, true)::jsonb -> ${quoteString(claimPath)} -> ${quoteString(action)}) ? (${scopeColumnRef})::text)`
+}
+
+/**
+ * Table-backed `hasGrant` compilation. Emits an `EXISTS (SELECT 1 FROM
+ * <grant_table> WHERE ...)` predicate scoped to the requesting principal.
+ *
+ * Dispatch order:
+ *   1. `ctx.resourceGrants.tables[scopeColumnName]` — per-resource override
+ *   2. `ctx.resourceGrants.fallbackTable` + matching `scopeColumnTypeMap`
+ *      entry — polymorphic catch-all
+ *   3. Throw — neither path applies (consumer hasn't declared a grant
+ *      target for this scope column)
+ *
+ * Throws at compile time with an actionable message instead of emitting
+ * broken SQL — a guarded compile-time failure is far cheaper than a silent
+ * "always denies" runtime bug.
+ *
+ * Principal comparison uses the configured `principalClaim` (default
+ * 'sub') cast to uuid — same convention as `defaultCompileIsOwner`.
+ * Non-UUID principal columns are not supported by the built-in; consumers
+ * with that shape should override via `ExprCompileCtx.compileHasGrant`.
+ */
+export function defaultCompileHasGrantTable(
+  action: string,
+  scopeColumnName: string,
+  scopeColumnRef: string,
+  ctx: ExprCompileCtx
+): string {
+  if (ctx.resourceGrants?.source !== 'table') {
+    throw new Error(
+      `[prisma-guarddog/emitter-postgres-rls] defaultCompileHasGrantTable invoked but resourceGrants source is "${ctx.resourceGrants?.source ?? 'undefined'}". ` +
+        'This is an internal dispatch bug — file an issue.'
+    )
+  }
+  const accessorLit = quoteString(ctx.claims.accessor)
+  const principalRef = `(current_setting(${accessorLit}, true)::jsonb ->> ${quoteString(ctx.resourceGrants.principalClaim)})::uuid`
+
+  // Per-resource override wins.
+  const perResource = ctx.resourceGrants.tables[scopeColumnName]
+  if (perResource !== undefined) {
+    return emitGrantExists(perResource, action, scopeColumnRef, principalRef, undefined)
+  }
+
+  // Polymorphic fallback.
+  const fallback = ctx.resourceGrants.fallbackTable
+  if (fallback === undefined) {
+    throw new Error(
+      `[prisma-guarddog/emitter-postgres-rls] hasGrant("${action}", col("${scopeColumnName}")): no per-resource entry in tables{} and no fallbackTable configured. ` +
+        `Add a tables["${scopeColumnName}"] entry or declare a fallbackTable in defineResourceGrants.`
+    )
+  }
+  const resourceTypeLabel = fallback.scopeColumnTypeMap[scopeColumnName]
+  if (resourceTypeLabel === undefined) {
+    throw new Error(
+      `[prisma-guarddog/emitter-postgres-rls] hasGrant("${action}", col("${scopeColumnName}")): no per-resource entry in tables{} and fallbackTable.scopeColumnTypeMap has no entry for "${scopeColumnName}". ` +
+        `Add scopeColumnTypeMap["${scopeColumnName}"] = "<ResourceTypeLabel>" or add a tables["${scopeColumnName}"] entry.`
+    )
+  }
+  return emitGrantExists(fallback, action, scopeColumnRef, principalRef, resourceTypeLabel)
+}
+
+/**
+ * Shared EXISTS-emit for both per-resource and polymorphic paths. The
+ * `resourceTypeLabel` parameter is undefined for per-resource (no
+ * discriminator equality) and a literal string for polymorphic.
+ */
+function emitGrantExists(
+  table: PerResourceGrantTable | PolymorphicGrantTable,
+  action: string,
+  scopeColumnRef: string,
+  principalRef: string,
+  resourceTypeLabel: string | undefined
+): string {
+  const tableIdent = quoteIdent(table.name)
+  const principalCol = quoteIdent(table.principalColumn)
+
+  // Per-resource: resourceIdColumn defaults to the scope column's natural
+  // name (the map key). Polymorphic: it's always explicit on the type.
+  const resourceIdCol = quoteIdent(
+    (table as PolymorphicGrantTable).resourceIdColumn ??
+      (table as PerResourceGrantTable).resourceIdColumn ??
+      // Last-resort default for per-resource: the scope column's ref is
+      // already qualified; we want just the bare column name. Strip
+      // quotes / table-prefix to recover it. This path is exercised when
+      // PerResourceGrantTable.resourceIdColumn is omitted entirely.
+      defaultResourceIdColumn(scopeColumnRef)
+  )
+
+  const clauses: string[] = [`${principalCol} = ${principalRef}`, `${resourceIdCol} = ${scopeColumnRef}`]
+
+  if (resourceTypeLabel !== undefined) {
+    const typeCol = quoteIdent((table as PolymorphicGrantTable).resourceTypeColumn)
+    clauses.push(`${typeCol} = ${quoteString(resourceTypeLabel)}`)
+  }
+
+  if (table.actionsColumn !== undefined && table.actionsColumn.length > 0) {
+    clauses.push(`${quoteString(action)} = ANY(${quoteIdent(table.actionsColumn)})`)
+  } else if (table.actionColumn !== undefined && table.actionColumn.length > 0) {
+    clauses.push(`${quoteIdent(table.actionColumn)} = ${quoteString(action)}`)
+  }
+  // Validation guarantees exactly one is set; the else-branch is
+  // unreachable in well-formed configs.
+
+  return `EXISTS (SELECT 1 FROM ${tableIdent} WHERE ${clauses.join(' AND ')})`
+}
+
+/**
+ * Strip table qualification and quotes from a scope column reference to
+ * recover the bare column name. Only used as the last-resort default for
+ * `PerResourceGrantTable.resourceIdColumn`. Input shapes:
+ *   `"workspaceId"`              -> `workspaceId`
+ *   `"some_table"."workspaceId"` -> `workspaceId`
+ */
+function defaultResourceIdColumn(scopeColumnRef: string): string {
+  const lastDot = scopeColumnRef.lastIndexOf('.')
+  const bare = lastDot === -1 ? scopeColumnRef : scopeColumnRef.slice(lastDot + 1)
+  return bare.replace(/^"|"$/g, '')
 }
 
 /**

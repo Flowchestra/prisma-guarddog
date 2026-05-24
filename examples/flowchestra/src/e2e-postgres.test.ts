@@ -26,13 +26,13 @@
  */
 
 import { renderOps } from '@flowchestra/prisma-guarddog'
-import { compileToOps } from '@flowchestra/prisma-guarddog-core'
+import { compileToOps, materializeSchema } from '@flowchestra/prisma-guarddog-core'
 import { assertAllowed, assertDenied, withScenario } from '@flowchestra/prisma-guarddog-testing-postgres'
 // eslint-disable-next-line import/no-extraneous-dependencies -- pg is a devDependency of this example package.
 import { Client } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { buildExampleGuarddog } from '../prisma/guarddog.js'
+import schema from '../prisma/guarddog.js'
 
 function e2eEnabled(): boolean {
   if (process.env['GUARDDOG_E2E'] !== '1') return false
@@ -158,7 +158,7 @@ describe.skipIf(!enabled)('flowchestra E2E (real postgres)', () => {
     await owner.query(TEARDOWN_SQL)
     await owner.query(SCHEMA_SQL)
 
-    const guard = buildExampleGuarddog()
+    const guard = materializeSchema(schema)
     const ops = compileToOps(guard)
     renderedSql = renderOps(ops, { claims: guard.config.claims })
     for (const stmt of renderedSql) {

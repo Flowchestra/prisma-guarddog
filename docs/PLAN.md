@@ -70,6 +70,7 @@ Scope is **locked**. The exit criteria below are deliberately narrow; do not pro
 - **FDW table support** — emitter handles foreign tables with no native tenant column; policies join through the FDW (`@flowchestra/prisma-guarddog-emitter-fdw`)
 - **Row-conditional field masking** — `.masks()` / `.projection()` builders; emitted via generated secure views or projection functions
 - **Supabase-specific importer** — pulls policies via Supabase REST/dashboard rather than direct `pg_policies` (`@flowchestra/prisma-guarddog-importer-supabase`)
+- ~~**Table-backed `resourceGrants` source**~~ — **shipped in `0.1.0-alpha.2`** via `defineResourceGrants({ source: 'table', tables: {...}, fallbackTable: {...} })`. Supports per-resource grant tables + polymorphic fallback. See [ADR-0021](./adr/0021-table-backed-resource-grants.md).
 
 ### Phase 3 — Identity provider integration
 

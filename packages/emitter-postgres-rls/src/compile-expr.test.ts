@@ -1,4 +1,4 @@
-import { defineClaims } from '@flowchestra/prisma-guarddog-core'
+import { defineClaims, defineResourceGrants } from '@flowchestra/prisma-guarddog-core'
 import type { ClaimsDefinition, Expr, LiteralValue } from '@flowchestra/prisma-guarddog-core'
 import { describe, expect, it } from 'vitest'
 
@@ -245,5 +245,153 @@ describe('compileExpr — inArray', () => {
 describe('compileExpr — raw', () => {
   it('wraps the raw SQL in parens', () => {
     expect(compileExpr(raw('tenant_id IS NOT NULL'), baseCtx())).toBe('(tenant_id IS NOT NULL)')
+  })
+})
+
+describe('compileExpr — hasGrant with source: "table"', () => {
+  // Uses the top-level `hasGrant` factory defined at the top of this file.
+
+  // quoteIdent leaves snake_case bare and only quotes camelCase / reserved
+  // names. Test expectations reflect that — `workspace_grant`, `actions`,
+  // `action`, `ws_id`, `tenantId`'s table-ref form, etc. follow that rule.
+  it('compiles a per-resource table with actionsColumn (text[] via ANY)', () => {
+    const ctx = baseCtx({
+      resourceGrants: defineResourceGrants({
+        source: 'table',
+        actions: ['edit'] as const,
+        tables: {
+          workspaceId: { name: 'workspace_grant', principalColumn: 'userId', actionsColumn: 'actions' },
+        },
+      }),
+    })
+    expect(compileExpr(hasGrant('edit', 'workspaceId'), ctx)).toBe(
+      `EXISTS (SELECT 1 FROM workspace_grant WHERE "userId" = (current_setting('request.jwt.claims', true)::jsonb ->> 'sub')::uuid AND "workspaceId" = "workspaceId" AND 'edit' = ANY(actions))`
+    )
+  })
+
+  it('compiles a per-resource table with actionColumn (one row per action)', () => {
+    const ctx = baseCtx({
+      resourceGrants: defineResourceGrants({
+        source: 'table',
+        actions: ['edit'] as const,
+        tables: {
+          workspaceId: { name: 'workspace_grant', principalColumn: 'userId', actionColumn: 'action' },
+        },
+      }),
+    })
+    expect(compileExpr(hasGrant('edit', 'workspaceId'), ctx)).toBe(
+      `EXISTS (SELECT 1 FROM workspace_grant WHERE "userId" = (current_setting('request.jwt.claims', true)::jsonb ->> 'sub')::uuid AND "workspaceId" = "workspaceId" AND action = 'edit')`
+    )
+  })
+
+  it('honors a custom resourceIdColumn on a per-resource entry', () => {
+    const ctx = baseCtx({
+      resourceGrants: defineResourceGrants({
+        source: 'table',
+        actions: ['edit'] as const,
+        tables: {
+          workspaceId: {
+            name: 'workspace_grant',
+            principalColumn: 'userId',
+            resourceIdColumn: 'ws_id',
+            actionsColumn: 'actions',
+          },
+        },
+      }),
+    })
+    expect(compileExpr(hasGrant('edit', 'workspaceId'), ctx)).toBe(
+      `EXISTS (SELECT 1 FROM workspace_grant WHERE "userId" = (current_setting('request.jwt.claims', true)::jsonb ->> 'sub')::uuid AND ws_id = "workspaceId" AND 'edit' = ANY(actions))`
+    )
+  })
+
+  it('falls back to the polymorphic table when no per-resource entry matches', () => {
+    const ctx = baseCtx({
+      resourceGrants: defineResourceGrants({
+        source: 'table',
+        actions: ['edit'] as const,
+        tables: {
+          workspaceId: { name: 'workspace_grant', principalColumn: 'userId', actionsColumn: 'actions' },
+        },
+        fallbackTable: {
+          name: 'resource_grant',
+          principalColumn: 'userId',
+          resourceTypeColumn: 'resourceType',
+          resourceIdColumn: 'resourceId',
+          actionsColumn: 'actions',
+          scopeColumnTypeMap: { tenantId: 'Tenant' },
+        },
+      }),
+    })
+    // workspaceId hits the per-resource override:
+    expect(compileExpr(hasGrant('edit', 'workspaceId'), ctx)).toContain('FROM workspace_grant')
+    // tenantId falls through to the polymorphic table:
+    expect(compileExpr(hasGrant('edit', 'tenantId'), ctx)).toBe(
+      `EXISTS (SELECT 1 FROM resource_grant WHERE "userId" = (current_setting('request.jwt.claims', true)::jsonb ->> 'sub')::uuid AND "resourceId" = "tenantId" AND "resourceType" = 'Tenant' AND 'edit' = ANY(actions))`
+    )
+  })
+
+  it('honors a custom principalClaim', () => {
+    const ctx = baseCtx({
+      resourceGrants: defineResourceGrants({
+        source: 'table',
+        actions: ['edit'] as const,
+        principalClaim: 'userId',
+        tables: {
+          workspaceId: { name: 'workspace_grant', principalColumn: 'userId', actionsColumn: 'actions' },
+        },
+      }),
+    })
+    expect(compileExpr(hasGrant('edit', 'workspaceId'), ctx)).toContain(
+      `"userId" = (current_setting('request.jwt.claims', true)::jsonb ->> 'userId')::uuid`
+    )
+  })
+
+  it('throws at compile time when no per-resource entry and no fallback exists for the scope column', () => {
+    const ctx = baseCtx({
+      resourceGrants: defineResourceGrants({
+        source: 'table',
+        actions: ['edit'] as const,
+        tables: {
+          workspaceId: { name: 'workspace_grant', principalColumn: 'userId', actionsColumn: 'actions' },
+        },
+      }),
+    })
+    expect(() => compileExpr(hasGrant('edit', 'unknownColumn'), ctx)).toThrow(
+      /no per-resource entry in tables\{\} and no fallbackTable configured/
+    )
+  })
+
+  it('throws when polymorphic fallback has no scopeColumnTypeMap entry for the column', () => {
+    const ctx = baseCtx({
+      resourceGrants: defineResourceGrants({
+        source: 'table',
+        actions: ['edit'] as const,
+        fallbackTable: {
+          name: 'resource_grant',
+          principalColumn: 'userId',
+          resourceTypeColumn: 'resourceType',
+          resourceIdColumn: 'resourceId',
+          actionsColumn: 'actions',
+          scopeColumnTypeMap: { tenantId: 'Tenant' }, // does NOT cover workspaceId
+        },
+      }),
+    })
+    expect(() => compileExpr(hasGrant('edit', 'workspaceId'), ctx)).toThrow(
+      /scopeColumnTypeMap has no entry for "workspaceId"/
+    )
+  })
+
+  it('explicit compileHasGrant override still wins over source-based dispatch', () => {
+    const ctx = baseCtx({
+      resourceGrants: defineResourceGrants({
+        source: 'table',
+        actions: ['edit'] as const,
+        tables: {
+          workspaceId: { name: 'workspace_grant', principalColumn: 'userId', actionsColumn: 'actions' },
+        },
+      }),
+      compileHasGrant: () => '/* override */',
+    })
+    expect(compileExpr(hasGrant('edit', 'workspaceId'), ctx)).toBe('/* override */')
   })
 })

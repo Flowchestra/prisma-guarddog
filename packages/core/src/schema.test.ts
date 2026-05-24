@@ -140,8 +140,10 @@ describe('materializeSchema', () => {
       policies: () => {},
     })
     const guard = materializeSchema(schema)
-    expect(guard.config.resourceGrants?.claimPath).toBe('perms')
-    expect(guard.config.resourceGrants?.actions).toEqual(['read'])
+    const rg = guard.config.resourceGrants
+    expect(rg?.source).toBe('claims')
+    expect(rg?.source === 'claims' && rg.claimPath).toBe('perms')
+    expect(rg?.actions).toEqual(['read'])
   })
 
   it('produces independent Guarddog instances on repeated calls (no shared state)', () => {

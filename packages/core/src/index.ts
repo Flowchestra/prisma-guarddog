@@ -25,7 +25,12 @@ export { defineResources } from './resources.js'
 export type { ResourceParentRef, ResourceSpec, ResourceTreeDefinition } from './resources.js'
 
 export { defineResourceGrants } from './resource-grants.js'
-export type { ResourceGrantsDefinition, ResourceGrantsSource } from './resource-grants.js'
+export type {
+  PerResourceGrantTable,
+  PolymorphicGrantTable,
+  ResourceGrantsDefinition,
+  ResourceGrantsSource,
+} from './resource-grants.js'
 
 export { defineSchema, materializeSchema } from './schema.js'
 export type { SchemaDefinition } from './schema.js'

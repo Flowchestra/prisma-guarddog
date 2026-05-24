@@ -16,15 +16,28 @@
  */
 
 import { renderOps } from '@flowchestra/prisma-guarddog'
-import { applyOps, compileToOps, compileToState, empty, type Op } from '@flowchestra/prisma-guarddog-core'
+import {
+  applyOps,
+  compileToOps,
+  compileToState,
+  empty,
+  materializeSchema,
+  type Op,
+} from '@flowchestra/prisma-guarddog-core'
 import { lintCoverage } from '@flowchestra/prisma-guarddog-lint'
 import { describe, expect, it } from 'vitest'
 
-import { buildExampleGuarddog } from '../prisma/guarddog.js'
+import schema from '../prisma/guarddog.js'
+
+// Build via the canonical schema-file path — exactly what `guarddog migrate`
+// / `check` / `emit` / `diff` do under the hood after `loadSchema`. Tests
+// that bypass `materializeSchema` would silently drift from the CLI's
+// behavior; do not introduce a separate imperative entry point.
+const buildGuard = () => materializeSchema(schema)
 
 describe('example flowchestra schema — compile pipeline', () => {
   it('declares the seven representative models', () => {
-    const guard = buildExampleGuarddog()
+    const guard = buildGuard()
     const modelsWithPolicies = new Set(guard.getPolicies().map((p) => p.model))
     const polymorphicModels = new Set(guard.getPolymorphics().map((p) => p.modelName))
     const noPolicyModels = new Set(guard.getNoPolicies().map((n) => n.model))
@@ -38,7 +51,7 @@ describe('example flowchestra schema — compile pipeline', () => {
   })
 
   it('passes lintCoverage against the seven-model Prisma list', () => {
-    const guard = buildExampleGuarddog()
+    const guard = buildGuard()
     const report = lintCoverage({
       guard,
       prismaModels: [
@@ -56,13 +69,13 @@ describe('example flowchestra schema — compile pipeline', () => {
   })
 
   it('compiles to a deterministic op sequence', () => {
-    const a = compileToOps(buildExampleGuarddog())
-    const b = compileToOps(buildExampleGuarddog())
+    const a = compileToOps(buildGuard())
+    const b = compileToOps(buildGuard())
     expect(JSON.stringify(a)).toBe(JSON.stringify(b))
   })
 
   it('emits create-policy ops for every (model, verb) declared on the policies', () => {
-    const ops = compileToOps(buildExampleGuarddog())
+    const ops = compileToOps(buildGuard())
     const policyOps = ops.filter((o): o is Extract<Op, { kind: 'create-policy' }> => o.kind === 'create-policy')
     const seen = new Set(policyOps.map((o) => `${o.policy.model}::${o.policy.verb}`))
     expect(seen.has('Workspace::select')).toBe(true)
@@ -75,7 +88,7 @@ describe('example flowchestra schema — compile pipeline', () => {
   })
 
   it('enables and forces RLS on every policied table (no MigrationLedger toggle)', () => {
-    const ops = compileToOps(buildExampleGuarddog())
+    const ops = compileToOps(buildGuard())
     const enabled = new Set(
       ops.filter((o): o is Extract<Op, { kind: 'enable-rls' }> => o.kind === 'enable-rls').map((o) => o.table)
     )
@@ -87,7 +100,7 @@ describe('example flowchestra schema — compile pipeline', () => {
   })
 
   it('emits column GRANTs for the sensitive File columns', () => {
-    const ops = compileToOps(buildExampleGuarddog())
+    const ops = compileToOps(buildGuard())
     const grants = ops.filter((o): o is Extract<Op, { kind: 'grant-column' }> => o.kind === 'grant-column')
     const keys = grants.map((g) => `${g.table}.${g.column}::${g.verb}::${g.role}`).toSorted()
     expect(keys).toEqual([
@@ -99,7 +112,7 @@ describe('example flowchestra schema — compile pipeline', () => {
   })
 
   it('renders SQL with expected hallmarks (role DO-block, CREATE POLICY, GRANT column)', () => {
-    const guard = buildExampleGuarddog()
+    const guard = buildGuard()
     const sql = renderOps(compileToOps(guard), { claims: guard.config.claims })
     const joined = sql.join('\n')
     expect(joined).toContain('CREATE ROLE app_user')
@@ -111,7 +124,7 @@ describe('example flowchestra schema — compile pipeline', () => {
   })
 
   it('forward-replay of compileToOps reaches the same State as compileToState', () => {
-    const guard = buildExampleGuarddog()
+    const guard = buildGuard()
     const replayed = applyOps(empty(), compileToOps(guard))
     const direct = compileToState(guard)
     expect(replayed.policies.size).toBe(direct.policies.size)
