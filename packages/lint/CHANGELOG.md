@@ -1,5 +1,34 @@
 # @flowchestra/prisma-guarddog-lint
 
+## 0.1.0-alpha.1
+
+### Patch Changes
+
+- [`678e840`](https://github.com/Flowchestra/prisma-guarddog/commit/678e840ccfbc5e4f614bddc0d7d062a60c0224f7)
+  Thanks [@Henry-Steele](https://github.com/Henry-Steele)! - Two bug fixes
+  surfaced by running the end-to-end suite for the first time.
+
+  **All packages:** add a `default` condition to every workspace package's
+  `exports` field. Previously only `types` + `import` were declared — jiti (used
+  by the CLI's `loadSchema`) requests the `default` condition during
+  CJS-flavored resolution, so any `prisma/guarddog.ts` that lived outside the
+  workspace tree failed to load workspace packages with
+  `No "exports" main defined`. This was a latent bug for every downstream
+  consumer; surfaced when the `guarddog` CLI was pointed at a schema file in a
+  tmpdir.
+
+  **`importer-postgres`:** correctly parse `pg_policies.roles` when
+  node-postgres returns the `name[]` column as a raw Postgres array literal
+  (`{role1,role2}`) instead of a JS array. The previous code did
+  `[...row.roles]`, which spread the string to characters and made
+  `dbRole === '{'` for every imported policy. A new `parseRolesField` helper
+  accepts both shapes and handles double-quoted entries.
+
+- Updated dependencies
+  [[`678e840`](https://github.com/Flowchestra/prisma-guarddog/commit/678e840ccfbc5e4f614bddc0d7d062a60c0224f7)]:
+  - @flowchestra/prisma-guarddog-core@0.1.0-alpha.1
+  - @flowchestra/prisma-guarddog-importer-prisma@0.1.0-alpha.1
+
 ## 0.1.0-alpha.0
 
 ### Minor Changes
