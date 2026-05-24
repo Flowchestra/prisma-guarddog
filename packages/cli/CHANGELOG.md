@@ -1,5 +1,61 @@
 # @flowchestra/prisma-guarddog
 
+## 0.1.0-alpha.1
+
+### Minor Changes
+
+- [`678e840`](https://github.com/Flowchestra/prisma-guarddog/commit/678e840ccfbc5e4f614bddc0d7d062a60c0224f7)
+  Thanks [@Henry-Steele](https://github.com/Henry-Steele)! - CLI: add `emit`,
+  `diff`, `import` subcommands and a `--lint` flag on `check`.
+  - `guarddog emit` — render the entire schema as SQL to stdout (or
+    `--out <file>`). Read-only; touches no migrations. Useful for ad-hoc
+    inspection or piping the full Op set into psql.
+  - `guarddog diff` — preview what the next `guarddog migrate` would write,
+    without writing anything. Pass `--exit-code` to fail when there are pending
+    changes (CI drift gate).
+  - `guarddog import` — connect to a live Postgres (`--url <conn-string>`) and
+    scaffold a `guarddog.ts` from `pg_policies` + column privileges. Output uses
+    `rawSql()` + `.todo()` markers per ADR-0012; review before committing.
+    Requires `pg` (declared as an optional peerDependency).
+  - `guarddog check --lint` — cross-reference the loaded `Guarddog` against the
+    consumer's Prisma DMMF and fail on any model without `.policy()` /
+    `.polymorphic()` / `.noPolicy()` coverage. The bug class RLS itself cannot
+    catch.
+
+  Each command has a matching programmatic export — `runEmit`, `runDiff`,
+  `runImport` — for editor integrations and scripting.
+
+### Patch Changes
+
+- [`678e840`](https://github.com/Flowchestra/prisma-guarddog/commit/678e840ccfbc5e4f614bddc0d7d062a60c0224f7)
+  Thanks [@Henry-Steele](https://github.com/Henry-Steele)! - Two bug fixes
+  surfaced by running the end-to-end suite for the first time.
+
+  **All packages:** add a `default` condition to every workspace package's
+  `exports` field. Previously only `types` + `import` were declared — jiti (used
+  by the CLI's `loadSchema`) requests the `default` condition during
+  CJS-flavored resolution, so any `prisma/guarddog.ts` that lived outside the
+  workspace tree failed to load workspace packages with
+  `No "exports" main defined`. This was a latent bug for every downstream
+  consumer; surfaced when the `guarddog` CLI was pointed at a schema file in a
+  tmpdir.
+
+  **`importer-postgres`:** correctly parse `pg_policies.roles` when
+  node-postgres returns the `name[]` column as a raw Postgres array literal
+  (`{role1,role2}`) instead of a JS array. The previous code did
+  `[...row.roles]`, which spread the string to characters and made
+  `dbRole === '{'` for every imported policy. A new `parseRolesField` helper
+  accepts both shapes and handles double-quoted entries.
+
+- Updated dependencies
+  [[`678e840`](https://github.com/Flowchestra/prisma-guarddog/commit/678e840ccfbc5e4f614bddc0d7d062a60c0224f7)]:
+  - @flowchestra/prisma-guarddog-core@0.1.0-alpha.1
+  - @flowchestra/prisma-guarddog-emitter-postgres-rls@0.1.0-alpha.1
+  - @flowchestra/prisma-guarddog-emitter-postgres-column-privileges@0.1.0-alpha.1
+  - @flowchestra/prisma-guarddog-importer-prisma@0.1.0-alpha.1
+  - @flowchestra/prisma-guarddog-importer-postgres@0.1.0-alpha.1
+  - @flowchestra/prisma-guarddog-lint@0.1.0-alpha.1
+
 ## 0.1.0-alpha.0
 
 ### Minor Changes
