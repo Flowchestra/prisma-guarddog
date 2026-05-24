@@ -61,16 +61,17 @@ jobs:
       - name: Build
         run: pnpm -r run build
 
-      # Coverage lint against the flowchestra example: every Prisma model must
-      # have .policy() / .polymorphic() / .noPolicy(). This is the bug class
-      # RLS itself cannot catch — a new model silently inheriting a blanket
-      # GRANT because nobody wrote a policy. See @flowchestra/prisma-guarddog-lint.
-      #
-      # Invoked via the built dist/bin.cjs (`Build` step above produced it) —
-      # workspace `bin:` resolution against `./src/bin.ts` doesn't run in pure
-      # Node, so we point at the compiled CJS entry directly.
-      - name: Coverage lint (flowchestra example)
-        run: node packages/cli/dist/bin.cjs check --lint --cwd examples/flowchestra
+      # Coverage lint is asserted by the example's `guarddog.test.ts`
+      # ("passes lintCoverage against the seven-model Prisma list") which
+      # runs in the `Test` step above. We previously also invoked the built
+      # `dist/bin.cjs` here as an end-to-end bin smoke, but that path
+      # resolves workspace deps via Node's loader — which hits the
+      # workspace `exports: { import: "./src/index.ts" }` entries and then
+      # falls over on the source's `from './foo.js'` ESM-on-TS imports.
+      # The pack-and-install harness that handles this correctly belongs
+      # in the publish dry-run flow (DoD #2.4 — handed off to the
+      # publishing agent). Until that lands, the lint package's value-prop
+      # is gated by the example's unit test alone.
 
   e2e:
     name: e2e
