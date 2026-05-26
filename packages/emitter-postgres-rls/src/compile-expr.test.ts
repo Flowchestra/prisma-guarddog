@@ -251,9 +251,14 @@ describe('compileExpr — raw', () => {
 describe('compileExpr — hasGrant with source: "table"', () => {
   // Uses the top-level `hasGrant` factory defined at the top of this file.
 
-  // quoteIdent leaves snake_case bare and only quotes camelCase / reserved
-  // names. Test expectations reflect that — `workspace_grant`, `actions`,
-  // `action`, `ws_id`, `tenantId`'s table-ref form, etc. follow that rule.
+  // Both grant-table columns and the outer scope reference are fully
+  // qualified — the grant table's name on the inner side; the policy's
+  // `ctx.table` ('workbench' in the baseCtx) on the outer side. Without
+  // this, an unqualified `"workspaceId" = "workspaceId"` inside the
+  // subquery would bind both sides to the inner table and degenerate to
+  // "any grant row exists" — losing the outer-row correlation.
+  // quoteIdent leaves snake_case identifiers bare and only quotes
+  // camelCase / reserved names.
   it('compiles a per-resource table with actionsColumn (text[] via ANY)', () => {
     const ctx = baseCtx({
       resourceGrants: defineResourceGrants({
@@ -265,7 +270,7 @@ describe('compileExpr — hasGrant with source: "table"', () => {
       }),
     })
     expect(compileExpr(hasGrant('edit', 'workspaceId'), ctx)).toBe(
-      `EXISTS (SELECT 1 FROM workspace_grant WHERE "userId" = (current_setting('request.jwt.claims', true)::jsonb ->> 'sub')::uuid AND "workspaceId" = "workspaceId" AND 'edit' = ANY(actions))`
+      `EXISTS (SELECT 1 FROM workspace_grant WHERE workspace_grant."userId" = (current_setting('request.jwt.claims', true)::jsonb ->> 'sub')::uuid AND workspace_grant."workspaceId" = workbench."workspaceId" AND 'edit' = ANY(workspace_grant.actions))`
     )
   })
 
@@ -280,7 +285,7 @@ describe('compileExpr — hasGrant with source: "table"', () => {
       }),
     })
     expect(compileExpr(hasGrant('edit', 'workspaceId'), ctx)).toBe(
-      `EXISTS (SELECT 1 FROM workspace_grant WHERE "userId" = (current_setting('request.jwt.claims', true)::jsonb ->> 'sub')::uuid AND "workspaceId" = "workspaceId" AND action = 'edit')`
+      `EXISTS (SELECT 1 FROM workspace_grant WHERE workspace_grant."userId" = (current_setting('request.jwt.claims', true)::jsonb ->> 'sub')::uuid AND workspace_grant."workspaceId" = workbench."workspaceId" AND workspace_grant.action = 'edit')`
     )
   })
 
@@ -300,7 +305,7 @@ describe('compileExpr — hasGrant with source: "table"', () => {
       }),
     })
     expect(compileExpr(hasGrant('edit', 'workspaceId'), ctx)).toBe(
-      `EXISTS (SELECT 1 FROM workspace_grant WHERE "userId" = (current_setting('request.jwt.claims', true)::jsonb ->> 'sub')::uuid AND ws_id = "workspaceId" AND 'edit' = ANY(actions))`
+      `EXISTS (SELECT 1 FROM workspace_grant WHERE workspace_grant."userId" = (current_setting('request.jwt.claims', true)::jsonb ->> 'sub')::uuid AND workspace_grant.ws_id = workbench."workspaceId" AND 'edit' = ANY(workspace_grant.actions))`
     )
   })
 
@@ -326,7 +331,7 @@ describe('compileExpr — hasGrant with source: "table"', () => {
     expect(compileExpr(hasGrant('edit', 'workspaceId'), ctx)).toContain('FROM workspace_grant')
     // tenantId falls through to the polymorphic table:
     expect(compileExpr(hasGrant('edit', 'tenantId'), ctx)).toBe(
-      `EXISTS (SELECT 1 FROM resource_grant WHERE "userId" = (current_setting('request.jwt.claims', true)::jsonb ->> 'sub')::uuid AND "resourceId" = "tenantId" AND "resourceType" = 'Tenant' AND 'edit' = ANY(actions))`
+      `EXISTS (SELECT 1 FROM resource_grant WHERE resource_grant."userId" = (current_setting('request.jwt.claims', true)::jsonb ->> 'sub')::uuid AND resource_grant."resourceId" = workbench."tenantId" AND resource_grant."resourceType" = 'Tenant' AND 'edit' = ANY(resource_grant.actions))`
     )
   })
 

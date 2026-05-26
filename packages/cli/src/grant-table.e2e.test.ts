@@ -2,14 +2,18 @@
  * Table-backed resourceGrants E2E.
  *
  * Proves the alpha.2 `source: 'table'` path end-to-end:
- *   1. Author a policy with `p.hasGrant('edit', col('workspaceId'))`.
+ *   1. Author a policy with `p.hasGrant('edit', col('workspaceId'))` on a
+ *      child table (`Doc`) whose rows carry a `workspaceId` FK.
  *   2. Render SQL via `compileToOps` + `renderOps` with a Guarddog whose
- *      resourceGrants are `source: 'table'` (per-resource override) AND
- *      a polymorphic fallback for tenantId.
- *   3. Apply against real Postgres alongside a grant table seeded with
- *      one row that should match and one row that should not.
- *   4. Verify the user with a grant sees the row; the user without does
- *      not; the polymorphic fallback path also enforces.
+ *      resourceGrants are `source: 'table'` (per-resource override for
+ *      `workspaceId`) AND a polymorphic fallback for `tenantId`.
+ *   3. Apply against real Postgres alongside seed: two Doc rows in
+ *      different workspaces; one workspace_grant row tying the granted
+ *      user to one of them; one resource_grant row tying the same user
+ *      to the tenant for the polymorphic path.
+ *   4. Verify the user with a grant sees only the doc whose workspace
+ *      they have a grant on; the user without sees zero. Same for the
+ *      polymorphic fallback path.
  *
  * Lives in the CLI package (not testing-postgres) for the same reason as
  * polymorphic-synthetic.e2e.test.ts: `renderOps` is a CLI-package export.
@@ -62,17 +66,20 @@ const enabled = e2eEnabled()
 const TENANT = '00000000-0000-0000-0000-000000003333'
 const WORKSPACE_OK = '00000000-0000-0000-0000-00000000aa01'
 const WORKSPACE_BLOCKED = '00000000-0000-0000-0000-00000000aa02'
+const DOC_IN_OK = '00000000-0000-0000-0000-00000000d001'
+const DOC_IN_BLOCKED = '00000000-0000-0000-0000-00000000d002'
+const TENANT_RECORD_ID = '00000000-0000-0000-0000-00000000bb01'
 const USER_GRANTED = '00000000-0000-0000-0000-00000000ee01'
 const USER_OTHER = '00000000-0000-0000-0000-00000000ee02'
-const SUBJECT_TENANT_RECORD = '00000000-0000-0000-0000-00000000bb01'
 
 const SCHEMA_SQL = `
-  CREATE TABLE grant_workspace (
-    id          uuid PRIMARY KEY,
-    "tenantId"  uuid NOT NULL,
-    label       text NOT NULL
+  CREATE TABLE doc (
+    id            uuid PRIMARY KEY,
+    "tenantId"    uuid NOT NULL,
+    "workspaceId" uuid NOT NULL,
+    title         text NOT NULL
   );
-  CREATE TABLE grant_tenant_record (
+  CREATE TABLE tenant_record (
     id          uuid PRIMARY KEY,
     "tenantId"  uuid NOT NULL,
     note        text NOT NULL
@@ -93,11 +100,11 @@ const SCHEMA_SQL = `
 `
 
 const SEED_SQL = `
-  INSERT INTO grant_workspace (id, "tenantId", label) VALUES
-    ('${WORKSPACE_OK}',      '${TENANT}', 'reachable'),
-    ('${WORKSPACE_BLOCKED}', '${TENANT}', 'no-grant');
-  INSERT INTO grant_tenant_record (id, "tenantId", note) VALUES
-    ('${SUBJECT_TENANT_RECORD}', '${TENANT}', 'tenant-scoped fallback target');
+  INSERT INTO doc (id, "tenantId", "workspaceId", title) VALUES
+    ('${DOC_IN_OK}',      '${TENANT}', '${WORKSPACE_OK}',      'reachable doc'),
+    ('${DOC_IN_BLOCKED}', '${TENANT}', '${WORKSPACE_BLOCKED}', 'no-grant doc');
+  INSERT INTO tenant_record (id, "tenantId", note) VALUES
+    ('${TENANT_RECORD_ID}', '${TENANT}', 'tenant-scoped fallback target');
   INSERT INTO workspace_grant ("userId", "workspaceId", actions) VALUES
     ('${USER_GRANTED}', '${WORKSPACE_OK}', ARRAY['edit']);
   INSERT INTO resource_grant ("userId", "resourceType", "resourceId", actions) VALUES
@@ -105,7 +112,7 @@ const SEED_SQL = `
 `
 
 const TEARDOWN_SQL = `
-  DROP TABLE IF EXISTS resource_grant, workspace_grant, grant_tenant_record, grant_workspace CASCADE;
+  DROP TABLE IF EXISTS resource_grant, workspace_grant, tenant_record, doc CASCADE;
   DO $$
   BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'grant_table_user') THEN
@@ -158,7 +165,7 @@ describe.skipIf(!enabled)('table-backed resourceGrants E2E (alpha.2)', () => {
 
     const guard = buildGuard()
     guard
-      .model('GrantWorkspace')
+      .model('Doc')
       .policy('grant_table_user')
       .select((p) =>
         p
@@ -167,7 +174,7 @@ describe.skipIf(!enabled)('table-backed resourceGrants E2E (alpha.2)', () => {
           .and(p.hasGrant('edit', col('workspaceId')))
       )
     guard
-      .model('GrantTenantRecord')
+      .model('TenantRecord')
       .policy('grant_table_user')
       .select((p) =>
         p
@@ -184,11 +191,11 @@ describe.skipIf(!enabled)('table-backed resourceGrants E2E (alpha.2)', () => {
     for (const stmt of sql) {
       await owner.query(stmt)
     }
-    await owner.query('GRANT SELECT ON grant_workspace, grant_tenant_record TO grant_table_user')
-    // The grant tables themselves must be readable by grant_table_user so the EXISTS
-    // sub-query can see them; in a real deployment these would be RLS'd in
-    // their own right, but the simplest convincing test grants table-level
-    // SELECT and trusts the row-level joins.
+    await owner.query('GRANT SELECT ON doc, tenant_record TO grant_table_user')
+    // The grant tables themselves must be readable by grant_table_user so the
+    // EXISTS sub-query can see them; in a real deployment these would be
+    // RLS'd in their own right, but the simplest convincing test grants
+    // table-level SELECT and trusts the row-level joins.
     await owner.query('GRANT SELECT ON workspace_grant, resource_grant TO grant_table_user')
     await owner.query('GRANT USAGE ON SCHEMA public TO grant_table_user')
 
@@ -202,24 +209,24 @@ describe.skipIf(!enabled)('table-backed resourceGrants E2E (alpha.2)', () => {
     }
   })
 
-  describe('per-resource table (workspace_grant)', () => {
-    it('user with a grant row sees the workspace', async () => {
+  describe('per-resource table (workspace_grant) — outer-row correlation', () => {
+    it("user with a grant on WORKSPACE_OK sees only that workspace's doc", async () => {
       await withScenario(
         owner,
         { role: 'grant_table_user', claims: { sub: USER_GRANTED, tenantId: TENANT } },
         async (db) => {
-          const result = await assertAllowed(db.query<{ id: string }>('SELECT id FROM grant_workspace', []))
-          expect(result.rows.map((r) => r.id)).toEqual([WORKSPACE_OK])
+          const result = await assertAllowed(db.query<{ id: string }>('SELECT id FROM doc', []))
+          expect(result.rows.map((r) => r.id)).toEqual([DOC_IN_OK])
         }
       )
     })
 
-    it('user without a grant row sees nothing', async () => {
+    it('user without any grant rows sees zero docs', async () => {
       await withScenario(
         owner,
         { role: 'grant_table_user', claims: { sub: USER_OTHER, tenantId: TENANT } },
         async (db) => {
-          const result = await assertAllowed(db.query<{ id: string }>('SELECT id FROM grant_workspace', []))
+          const result = await assertAllowed(db.query<{ id: string }>('SELECT id FROM doc', []))
           expect(result.rows).toHaveLength(0)
         }
       )
@@ -232,8 +239,8 @@ describe.skipIf(!enabled)('table-backed resourceGrants E2E (alpha.2)', () => {
         owner,
         { role: 'grant_table_user', claims: { sub: USER_GRANTED, tenantId: TENANT } },
         async (db) => {
-          const result = await assertAllowed(db.query<{ id: string }>('SELECT id FROM grant_tenant_record', []))
-          expect(result.rows.map((r) => r.id)).toEqual([SUBJECT_TENANT_RECORD])
+          const result = await assertAllowed(db.query<{ id: string }>('SELECT id FROM tenant_record', []))
+          expect(result.rows.map((r) => r.id)).toEqual([TENANT_RECORD_ID])
         }
       )
     })
@@ -243,7 +250,7 @@ describe.skipIf(!enabled)('table-backed resourceGrants E2E (alpha.2)', () => {
         owner,
         { role: 'grant_table_user', claims: { sub: USER_OTHER, tenantId: TENANT } },
         async (db) => {
-          const result = await assertAllowed(db.query<{ id: string }>('SELECT id FROM grant_tenant_record', []))
+          const result = await assertAllowed(db.query<{ id: string }>('SELECT id FROM tenant_record', []))
           expect(result.rows).toHaveLength(0)
         }
       )

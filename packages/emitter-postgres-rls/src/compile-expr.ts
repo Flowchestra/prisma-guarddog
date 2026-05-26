@@ -239,7 +239,7 @@ export const defaultCompileHasGrant: HasGrantCompiler = (action, scopeColumnRef,
 export function defaultCompileHasGrantTable(
   action: string,
   scopeColumnName: string,
-  scopeColumnRef: string,
+  _scopeColumnRef: string,
   ctx: ExprCompileCtx
 ): string {
   if (ctx.resourceGrants?.source !== 'table') {
@@ -254,7 +254,7 @@ export function defaultCompileHasGrantTable(
   // Per-resource override wins.
   const perResource = ctx.resourceGrants.tables[scopeColumnName]
   if (perResource !== undefined) {
-    return emitGrantExists(perResource, action, scopeColumnRef, principalRef, undefined)
+    return emitGrantExists(perResource, action, scopeColumnName, ctx.table, principalRef, undefined)
   }
 
   // Polymorphic fallback.
@@ -272,65 +272,62 @@ export function defaultCompileHasGrantTable(
         `Add scopeColumnTypeMap["${scopeColumnName}"] = "<ResourceTypeLabel>" or add a tables["${scopeColumnName}"] entry.`
     )
   }
-  return emitGrantExists(fallback, action, scopeColumnRef, principalRef, resourceTypeLabel)
+  return emitGrantExists(fallback, action, scopeColumnName, ctx.table, principalRef, resourceTypeLabel)
 }
 
 /**
  * Shared EXISTS-emit for both per-resource and polymorphic paths. The
  * `resourceTypeLabel` parameter is undefined for per-resource (no
  * discriminator equality) and a literal string for polymorphic.
+ *
+ * Column qualification is critical here: the grant table and the outer
+ * policy's table commonly share a column name (`workspaceId` on both
+ * `workspace_grant` and the policy's owning table). Without explicit
+ * qualification, an unquoted `workspaceId = workspaceId` inside the EXISTS
+ * subquery binds BOTH sides to the inner table, degenerating to "any
+ * grant row exists for the user" and losing the outer-row correlation.
+ * We fully qualify both sides — grant-table columns with the grant table
+ * name; the outer scope reference with the policy's `ctx.table`.
  */
 function emitGrantExists(
   table: PerResourceGrantTable | PolymorphicGrantTable,
   action: string,
-  scopeColumnRef: string,
+  outerScopeColumnName: string,
+  outerTableName: string,
   principalRef: string,
   resourceTypeLabel: string | undefined
 ): string {
   const tableIdent = quoteIdent(table.name)
-  const principalCol = quoteIdent(table.principalColumn)
+  const principalCol = `${tableIdent}.${quoteIdent(table.principalColumn)}`
 
   // Per-resource: resourceIdColumn defaults to the scope column's natural
   // name (the map key). Polymorphic: it's always explicit on the type.
-  const resourceIdCol = quoteIdent(
+  const resourceIdColName =
     (table as PolymorphicGrantTable).resourceIdColumn ??
-      (table as PerResourceGrantTable).resourceIdColumn ??
-      // Last-resort default for per-resource: the scope column's ref is
-      // already qualified; we want just the bare column name. Strip
-      // quotes / table-prefix to recover it. This path is exercised when
-      // PerResourceGrantTable.resourceIdColumn is omitted entirely.
-      defaultResourceIdColumn(scopeColumnRef)
-  )
+    (table as PerResourceGrantTable).resourceIdColumn ??
+    outerScopeColumnName
+  const resourceIdCol = `${tableIdent}.${quoteIdent(resourceIdColName)}`
 
-  const clauses: string[] = [`${principalCol} = ${principalRef}`, `${resourceIdCol} = ${scopeColumnRef}`]
+  // Outer-scope ref MUST be qualified with the policy's table to avoid
+  // colliding with the grant table's same-named column inside the subquery.
+  const outerRef = `${quoteIdent(outerTableName)}.${quoteIdent(outerScopeColumnName)}`
+
+  const clauses: string[] = [`${principalCol} = ${principalRef}`, `${resourceIdCol} = ${outerRef}`]
 
   if (resourceTypeLabel !== undefined) {
-    const typeCol = quoteIdent((table as PolymorphicGrantTable).resourceTypeColumn)
+    const typeCol = `${tableIdent}.${quoteIdent((table as PolymorphicGrantTable).resourceTypeColumn)}`
     clauses.push(`${typeCol} = ${quoteString(resourceTypeLabel)}`)
   }
 
   if (table.actionsColumn !== undefined && table.actionsColumn.length > 0) {
-    clauses.push(`${quoteString(action)} = ANY(${quoteIdent(table.actionsColumn)})`)
+    clauses.push(`${quoteString(action)} = ANY(${tableIdent}.${quoteIdent(table.actionsColumn)})`)
   } else if (table.actionColumn !== undefined && table.actionColumn.length > 0) {
-    clauses.push(`${quoteIdent(table.actionColumn)} = ${quoteString(action)}`)
+    clauses.push(`${tableIdent}.${quoteIdent(table.actionColumn)} = ${quoteString(action)}`)
   }
   // Validation guarantees exactly one is set; the else-branch is
   // unreachable in well-formed configs.
 
   return `EXISTS (SELECT 1 FROM ${tableIdent} WHERE ${clauses.join(' AND ')})`
-}
-
-/**
- * Strip table qualification and quotes from a scope column reference to
- * recover the bare column name. Only used as the last-resort default for
- * `PerResourceGrantTable.resourceIdColumn`. Input shapes:
- *   `"workspaceId"`              -> `workspaceId`
- *   `"some_table"."workspaceId"` -> `workspaceId`
- */
-function defaultResourceIdColumn(scopeColumnRef: string): string {
-  const lastDot = scopeColumnRef.lastIndexOf('.')
-  const bare = lastDot === -1 ? scopeColumnRef : scopeColumnRef.slice(lastDot + 1)
-  return bare.replace(/^"|"$/g, '')
 }
 
 /**
