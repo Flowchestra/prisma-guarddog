@@ -298,7 +298,6 @@ function emitGrantExists(
   resourceTypeLabel: string | undefined
 ): string {
   const tableIdent = quoteIdent(table.name)
-  const principalCol = `${tableIdent}.${quoteIdent(table.principalColumn)}`
 
   // Per-resource: resourceIdColumn defaults to the scope column's natural
   // name (the map key). Polymorphic: it's always explicit on the type.
@@ -312,22 +311,86 @@ function emitGrantExists(
   // colliding with the grant table's same-named column inside the subquery.
   const outerRef = `${quoteIdent(outerTableName)}.${quoteIdent(outerScopeColumnName)}`
 
-  const clauses: string[] = [`${principalCol} = ${principalRef}`, `${resourceIdCol} = ${outerRef}`]
+  const clauses: string[] = [emitPrincipalClause(table, tableIdent, principalRef), `${resourceIdCol} = ${outerRef}`]
 
   if (resourceTypeLabel !== undefined) {
     const typeCol = `${tableIdent}.${quoteIdent((table as PolymorphicGrantTable).resourceTypeColumn)}`
     clauses.push(`${typeCol} = ${quoteString(resourceTypeLabel)}`)
   }
 
-  if (table.actionsColumn !== undefined && table.actionsColumn.length > 0) {
-    clauses.push(`${quoteString(action)} = ANY(${tableIdent}.${quoteIdent(table.actionsColumn)})`)
-  } else if (table.actionColumn !== undefined && table.actionColumn.length > 0) {
-    clauses.push(`${tableIdent}.${quoteIdent(table.actionColumn)} = ${quoteString(action)}`)
-  }
-  // Validation guarantees exactly one is set; the else-branch is
-  // unreachable in well-formed configs.
+  clauses.push(emitActionClause(table, action, tableIdent))
 
   return `EXISTS (SELECT 1 FROM ${tableIdent} WHERE ${clauses.join(' AND ')})`
+}
+
+/**
+ * Principal clause. Single-column form: `<table>.<userCol> = <principal>`.
+ * User-OR-group disjunction (ADR-0023): the user column matches OR the
+ * group column is one of the principal's groups, resolved transitively
+ * through the membership table.
+ *
+ * Group-membership columns are qualified with the membership table name so
+ * the nested sub-select can't ambiguate against the grant table.
+ */
+function emitPrincipalClause(
+  table: PerResourceGrantTable | PolymorphicGrantTable,
+  tableIdent: string,
+  principalRef: string
+): string {
+  const userColName = table.principalUserColumn ?? table.principalColumn
+  // Validation guarantees one of these is set.
+  const userCol = `${tableIdent}.${quoteIdent(userColName!)}`
+  const userMatch = `${userCol} = ${principalRef}`
+
+  if (table.principalGroupColumn === undefined || table.groupMemberTable === undefined) {
+    return userMatch
+  }
+
+  const groupCol = `${tableIdent}.${quoteIdent(table.principalGroupColumn)}`
+  const gmt = table.groupMemberTable
+  const gmtIdent = quoteIdent(gmt.name)
+  const gmtGroupCol = `${gmtIdent}.${quoteIdent(gmt.groupColumn)}`
+  const gmtUserCol = `${gmtIdent}.${quoteIdent(gmt.userColumn)}`
+  const groupMatch = `${groupCol} IN (SELECT ${gmtGroupCol} FROM ${gmtIdent} WHERE ${gmtUserCol} = ${principalRef})`
+
+  return `(${userMatch} OR ${groupMatch})`
+}
+
+/**
+ * Action clause. Three shapes (validation guarantees exactly one):
+ *   - actionsColumn (text[]):  `'<action>' = ANY(<table>.<col>)`
+ *   - actionColumn:            `<table>.<col> = '<action>'`
+ *   - roleColumn + hierarchy:  `<table>.<col> = ANY(ARRAY[<rank..highest>]::<type>[])`
+ *     where the array is the suffix of the hierarchy from the requested
+ *     rank upward (rank-based "at least" semantics, ADR-0022).
+ */
+function emitActionClause(
+  table: PerResourceGrantTable | PolymorphicGrantTable,
+  action: string,
+  tableIdent: string
+): string {
+  if (table.actionsColumn !== undefined && table.actionsColumn.length > 0) {
+    return `${quoteString(action)} = ANY(${tableIdent}.${quoteIdent(table.actionsColumn)})`
+  }
+  if (table.actionColumn !== undefined && table.actionColumn.length > 0) {
+    return `${tableIdent}.${quoteIdent(table.actionColumn)} = ${quoteString(action)}`
+  }
+  // roleColumn + roleHierarchy — validation guarantees both are set here.
+  const roleCol = `${tableIdent}.${quoteIdent(table.roleColumn!)}`
+  const hierarchy = table.roleHierarchy!
+  const idx = hierarchy.indexOf(action)
+  if (idx === -1) {
+    throw new Error(
+      `[prisma-guarddog/emitter-postgres-rls] hasGrant("${action}", ...): rank "${action}" is not in ` +
+        `roleHierarchy [${hierarchy.join(', ')}] for grant table "${table.name}". ` +
+        'The requested rank must be one of the declared hierarchy ranks.'
+    )
+  }
+  const qualifying = hierarchy.slice(idx) // requested rank and everything higher
+  const cast =
+    table.roleColumnType !== undefined && table.roleColumnType.length > 0 ? `::${table.roleColumnType}[]` : ''
+  const arrayLit = `ARRAY[${qualifying.map((r) => quoteString(r)).join(', ')}]${cast}`
+  return `${roleCol} = ANY(${arrayLit})`
 }
 
 /**

@@ -49,7 +49,7 @@ export async function runEmit(opts: EmitOptions): Promise<EmitResult> {
     return failure(err instanceof SchemaLoadError ? err.message : String(err), writeStderr)
   }
 
-  const plan = planMigrate(loaded.guard, empty())
+  const plan = planMigrate(loaded.guard, empty(), config.renderOverrides)
   const sql = formatSqlBlock(plan.sql)
 
   if (opts.out !== undefined) {

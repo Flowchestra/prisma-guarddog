@@ -71,6 +71,7 @@ Scope is **locked**. The exit criteria below are deliberately narrow; do not pro
 - **Row-conditional field masking** — `.masks()` / `.projection()` builders; emitted via generated secure views or projection functions
 - **Supabase-specific importer** — pulls policies via Supabase REST/dashboard rather than direct `pg_policies` (`@flowchestra/prisma-guarddog-importer-supabase`)
 - ~~**Table-backed `resourceGrants` source**~~ — **shipped in `0.1.0-alpha.2`** via `defineResourceGrants({ source: 'table', tables: {...}, fallbackTable: {...} })`. Supports per-resource grant tables + polymorphic fallback. See [ADR-0021](./adr/0021-table-backed-resource-grants.md).
+- ~~**Rank-based + group-disjunctive grant tables**~~ — **shipped in `0.1.0-alpha.3`** (pulled forward from a would-be Phase 2.5 after the Flowchestra pilot, issues #5/#6): `roleColumn` + `roleHierarchy` rank semantics ([ADR-0022](./adr/0022-rank-based-grant-tables.md)) and `principalUserColumn`/`principalGroupColumn`/`groupMemberTable` user-OR-group resolution ([ADR-0023](./adr/0023-grant-principal-disjunction.md)). Plus CLI-threaded render overrides ([ADR-0024](./adr/0024-config-threaded-render-overrides.md)).
 
 ### Phase 3 — Identity provider integration
 

@@ -29,7 +29,18 @@ export { runImport } from './commands/import.js'
 export type { ImportOptions, ImportResult } from './commands/import.js'
 
 export { renderOps } from './render-ops.js'
-export type { RenderContext } from './render-ops.js'
+export type { RenderContext, RenderOverrides } from './render-ops.js'
+
+// Re-export the override compiler types so consumers writing a custom
+// `compileHasGrant` (etc.) can import them from the package they already
+// install (`@flowchestra/prisma-guarddog`) instead of reaching into the
+// emitter package or extracting via `NonNullable<RenderContext[...]>`.
+export type {
+  HasAppRoleCompiler,
+  HasGrantCompiler,
+  HasResourcePermissionCompiler,
+  IsOwnerCompiler,
+} from '@flowchestra/prisma-guarddog-emitter-postgres-rls'
 
 export { formatSidecar, readAllSidecarOps, replayMigrationsDir, SIDECAR_FILENAME, SIDECAR_VERSION } from './sidecar.js'
 export type { Sidecar } from './sidecar.js'

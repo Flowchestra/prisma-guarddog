@@ -55,6 +55,8 @@ All foundational decisions are captured as ADRs in [`adr/`](./adr/). Read [`adr/
 <!-- markdownlint-disable-next-line MD060 -->
 | 0019 | [Three permission layers + per-resource jsonb permissions](./adr/0019-three-permission-layers-and-resource-permissions.md) |
 | 0021 | [Table-backed resource grants (source: 'table')](./adr/0021-table-backed-resource-grants.md)                 |
+| 0022 | [Rank-based grant tables (roleColumn + roleHierarchy)](./adr/0022-rank-based-grant-tables.md)                |
+| 0023 | [Grant principal disjunction (user OR group)](./adr/0023-grant-principal-disjunction.md)                     |
 
 ### Migration + state
 
@@ -65,6 +67,7 @@ All foundational decisions are captured as ADRs in [`adr/`](./adr/). Read [`adr/
 | 0008 | [Idempotent DDL emission](./adr/0008-idempotent-ddl-emission.md)                                            |
 | 0010 | [Migrations colocate with Prisma](./adr/0010-migrations-colocate-with-prisma.md)                            |
 | 0020 | [Functional lifecycle over an Op-union state](./adr/0020-functional-lifecycle-over-op-union.md)             |
+| 0024 | [Config-threaded render overrides + ergonomics](./adr/0024-config-threaded-render-overrides.md)             |
 
 ### Repo + extension model
 

@@ -22,6 +22,8 @@ import { fileURLToPath } from 'node:url'
 
 import { createJiti } from 'jiti'
 
+import type { RenderOverrides } from './render-ops.js'
+
 export interface ResolvedConfig {
   /** Absolute path to the working directory used for relative resolution. */
   readonly cwd: string
@@ -33,6 +35,14 @@ export interface ResolvedConfig {
   readonly migrationsDir: string
   /** Filename extension for sidecar metadata (default `.guarddog.json`). */
   readonly metadataExt: string
+  /**
+   * Predicate-compiler overrides forwarded into `renderOps`. Empty unless
+   * the consumer's `guarddog.config.ts` declares `renderOverrides`. Lets a
+   * consumer with a non-default authorization model (rank-based grants,
+   * user-OR-group disjunction, etc.) plug a `compileHasGrant` through the
+   * stock `guarddog migrate` CLI instead of reimplementing the pipeline.
+   */
+  readonly renderOverrides: RenderOverrides
 }
 
 /**
@@ -45,6 +55,12 @@ export interface GuarddogConfigFile {
   readonly prismaSchemaPath?: string
   readonly migrationsDir?: string
   readonly metadataExt?: string
+  /**
+   * Override compilers threaded into `renderOps` by `guarddog migrate` /
+   * `diff` / `emit`. Carries functions, so the config file must be a
+   * `.ts`/`.js` module (it already is — loaded via jiti). See ADR-0024.
+   */
+  readonly renderOverrides?: RenderOverrides
 }
 
 export interface ResolveConfigOptions {
@@ -75,6 +91,10 @@ export function resolveConfig(opts: ResolveConfigOptions = {}): ResolvedConfig {
     prismaSchemaPath: resolveAgainstBase(overrides.prismaSchemaPath, resolve(cwd, 'prisma', 'schema.prisma')),
     migrationsDir: resolveAgainstBase(overrides.migrationsDir, resolve(cwd, 'prisma', 'migrations')),
     metadataExt: overrides.metadataExt ?? '.guarddog.json',
+    // Functions, not paths — passed through verbatim. Frozen shallow copy so
+    // the resolved config can't be mutated, but the compiler fns are shared.
+    // Spreading `undefined` is a no-op, so no `?? {}` fallback is needed.
+    renderOverrides: Object.freeze({ ...overrides.renderOverrides }),
   })
 }
 

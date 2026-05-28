@@ -166,7 +166,7 @@ Two things consumers will hit. Neither is a showstopper, but pretending they don
 
 2. **No publish dry-run gate yet.** Packaging looks correct (every package has `publishConfig` + `files` set), and recent versions published cleanly via the changesets workflow. But the workspace dev exports field (which points at `./src/index.ts` so jiti and vitest both work) interferes with a pack-and-install smoke test from outside the tree. The proper fix lives in the publish dry-run harness; the bin works correctly when consumed from a real installation.
 
-> **Note:** `resourceGrants.source: 'table'` (per-resource overrides + polymorphic fallback) shipped in `0.1.0-alpha.2`. See [ADR-0021](./docs/adr/0021-table-backed-resource-grants.md) for the API design.
+> **Note:** `resourceGrants.source: 'table'` (per-resource overrides + polymorphic fallback) shipped in `0.1.0-alpha.2` ([ADR-0021](./docs/adr/0021-table-backed-resource-grants.md)). `0.1.0-alpha.3` adds **rank-based grants** (`roleColumn` + `roleHierarchy`, [ADR-0022](./docs/adr/0022-rank-based-grant-tables.md)), **user-OR-group principal disjunction** (`groupMemberTable`, [ADR-0023](./docs/adr/0023-grant-principal-disjunction.md)), and **CLI-threaded `renderOverrides`** via `guarddog.config.ts` ([ADR-0024](./docs/adr/0024-config-threaded-render-overrides.md)).
 
 ## Roadmap
 

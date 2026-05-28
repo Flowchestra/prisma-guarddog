@@ -13,70 +13,105 @@
  *
  * **`source: 'claims'`** (Phase 1, the original) — grants are encoded in
  * the session claims as a jsonb object keyed by action name -> array of
- * resource IDs:
- *
- *     // claims payload
- *     {
- *       "grants": {
- *         "edit":   ["ws-1", "ws-2"],
- *         "delete": ["ws-1"],
- *         "admin":  ["ws-1"]
- *       }
- *     }
+ * resource IDs. `principalClaim` (default 'sub') names the claim that
+ * identifies the requesting user; the built-in claims compiler doesn't
+ * read it, but it's available to `compileHasGrant` overrides via
+ * `ctx.resourceGrants.principalClaim` so an override stays generic over
+ * the claim name instead of hardcoding it.
  *
  * **`source: 'table'`** (alpha.2+) — grants live in one or more Postgres
- * tables. Most consumers maintain dedicated per-resource grant tables (e.g.
- * `workspace_grant`, `workbench_grant`) AND/OR a polymorphic catch-all
- * (`resource_grant` with a `resourceType` discriminator). Both shapes can
- * be declared together — per-resource overrides win for the columns they
- * cover, polymorphic fallback handles the rest. See ADR-0021 for the
- * design.
+ * tables. Per-resource grant tables (`tables`) and/or a polymorphic
+ * catch-all (`fallbackTable`). Each grant table declares:
  *
- *     defineResourceGrants({
- *       source: 'table',
- *       actions: ['edit', 'admin'],
- *       tables: {
- *         workspaceId: {
- *           name: 'workspace_grant',
- *           principalColumn: 'userId',
- *           actionsColumn: 'actions',
- *           // resourceIdColumn defaults to the key ('workspaceId')
- *         },
- *       },
- *       fallbackTable: {
- *         name: 'resource_grant',
- *         principalColumn: 'userId',
- *         resourceTypeColumn: 'resourceType',
- *         resourceIdColumn: 'resourceId',
- *         actionsColumn: 'actions',
- *         scopeColumnTypeMap: { tenantId: 'Tenant', orgId: 'Org' },
- *       },
- *     })
+ *   - a **principal** spec: either a single `principalColumn` /
+ *     `principalUserColumn`, or a user-OR-group disjunction
+ *     (`principalUserColumn` + `principalGroupColumn` + `groupMemberTable`)
+ *     resolved transitively through a membership table (ADR-0023).
+ *   - an **action** spec — exactly one of:
+ *       - `actionsColumn` (`text[]`)
+ *       - `actionColumn` (one row per action)
+ *       - `roleColumn` + `roleHierarchy` — rank-based: "user has at least
+ *         rank X", compiled to a membership test against the qualifying
+ *         suffix of the hierarchy (ADR-0022).
+ *
+ * See ADR-0021 (table source), ADR-0022 (rank-based), ADR-0023 (principal
+ * disjunction).
  */
 
 export type ResourceGrantsSource = 'claims' | 'table'
 
 /**
+ * Membership table used to resolve group grants to the requesting user.
+ * `userColumn = <principal>` rows yield the groups the user belongs to.
+ */
+export interface GroupMemberTable {
+  readonly name: string
+  readonly userColumn: string
+  readonly groupColumn: string
+}
+
+/**
+ * Principal spec shared by per-resource and polymorphic grant tables.
+ *
+ * Single-principal (today's shape): set `principalColumn` (or its explicit
+ * alias `principalUserColumn`).
+ *
+ * User-OR-group disjunction: set `principalUserColumn` + `principalGroupColumn`
+ * + `groupMemberTable`. A grant row matches if its user column equals the
+ * principal OR its group column is one of the principal's groups (resolved
+ * via `groupMemberTable`).
+ */
+interface GrantPrincipalSpec {
+  /** Legacy/simple spelling of the user column. Alias for `principalUserColumn`. */
+  readonly principalColumn?: string
+  /** Explicit user-column spelling (preferred when also using groups). */
+  readonly principalUserColumn?: string
+  /** Group-id column on the grant table. Requires `groupMemberTable`. */
+  readonly principalGroupColumn?: string
+  /** Membership table for transitive group → user resolution. Requires `principalGroupColumn`. */
+  readonly groupMemberTable?: GroupMemberTable
+}
+
+/**
+ * Action spec shared by per-resource and polymorphic grant tables. Exactly
+ * one of the three shapes must be set.
+ */
+interface GrantActionSpec {
+  /** `text[]` column listing granted actions; matched via `<action> = ANY(col)`. */
+  readonly actionsColumn?: string
+  /** `text` column, one action per row; matched via `col = <action>`. */
+  readonly actionColumn?: string
+  /**
+   * Rank column (e.g. a role enum). With `roleHierarchy`, `hasGrant('EDITOR', ...)`
+   * compiles to `col = ANY(ARRAY[<EDITOR and every higher rank>])`.
+   */
+  readonly roleColumn?: string
+  /**
+   * Ordered rank vocabulary, lowest → highest. Required with `roleColumn`.
+   * Every entry must appear in the top-level `actions` vocabulary.
+   */
+  readonly roleHierarchy?: ReadonlyArray<string>
+  /**
+   * Optional Postgres type to cast the rank array literal to (e.g. an enum
+   * type name `'"ResourceRole"'`). Inserted verbatim as `::<type>[]`. For
+   * integer ranks pass e.g. `'int'` with a numeric-string `roleHierarchy`.
+   */
+  readonly roleColumnType?: string
+}
+
+/**
  * Per-resource grant table config (entry in the `tables` map). Keyed by
  * the scope column name passed to `p.hasGrant(action, col('<scopeColumn>'))`.
- * Exactly one of `actionColumn` / `actionsColumn` must be set — the former
- * for one-row-per-action storage, the latter for `text[]` storage.
  */
-export interface PerResourceGrantTable {
+export interface PerResourceGrantTable extends GrantPrincipalSpec, GrantActionSpec {
   /** Postgres table name (typically snake_case). */
   readonly name: string
-  /** Column holding the principal id (e.g. `userId`). Compared to the claim. */
-  readonly principalColumn: string
   /**
    * Column holding the resource id (e.g. `workspaceId`). Defaults to the
    * scope-column key the table is registered under (so the common case
    * doesn't need to repeat the column name).
    */
   readonly resourceIdColumn?: string
-  /** `text[]` column listing granted actions. Mutually exclusive with `actionColumn`. */
-  readonly actionsColumn?: string
-  /** `text` column holding one action per row. Mutually exclusive with `actionsColumn`. */
-  readonly actionColumn?: string
 }
 
 /**
@@ -86,16 +121,12 @@ export interface PerResourceGrantTable {
  * `resourceType` label to emit for each scope column (e.g. `tenantId ->
  * 'Tenant'`).
  */
-export interface PolymorphicGrantTable {
+export interface PolymorphicGrantTable extends GrantPrincipalSpec, GrantActionSpec {
   readonly name: string
-  readonly principalColumn: string
   /** e.g. `resourceType`. */
   readonly resourceTypeColumn: string
   /** e.g. `resourceId`. */
   readonly resourceIdColumn: string
-  /** Same mutual exclusion as `PerResourceGrantTable`. */
-  readonly actionsColumn?: string
-  readonly actionColumn?: string
   /**
    * Required map: scope column name -> resource type label. The label is
    * what gets written into `<resourceTypeColumn>` in the EXISTS predicate.
@@ -104,14 +135,15 @@ export interface PolymorphicGrantTable {
 }
 
 /**
- * Discriminated by `source`. Existing claim-based consumers keep the same
- * shape; table-based consumers carry the new table config.
+ * Discriminated by `source`. Both variants carry `principalClaim`
+ * (defaulted to 'sub' at construction).
  */
 export type ResourceGrantsDefinition<TActions extends string = string> =
   | {
       readonly source: 'claims'
       readonly claimPath: string
       readonly actions: ReadonlyArray<TActions>
+      readonly principalClaim: string
     }
   | {
       readonly source: 'table'
@@ -126,6 +158,7 @@ type DefineResourceGrantsConfig<TActions extends string> =
       readonly source?: 'claims'
       readonly claimPath?: string
       readonly actions: ReadonlyArray<TActions>
+      readonly principalClaim?: string
     }
   | {
       readonly source: 'table'
@@ -141,6 +174,12 @@ export function defineResourceGrants<const TActions extends string>(
   validateActions(config.actions)
 
   const source: ResourceGrantsSource = config.source ?? 'claims'
+  const principalClaim = config.principalClaim ?? 'sub'
+  if (principalClaim.length === 0) {
+    throw new Error(
+      '[prisma-guarddog] defineResourceGrants: principalClaim must be a non-empty string (default: "sub").'
+    )
+  }
 
   if (source === 'claims') {
     const claimPath = (config as { claimPath?: string }).claimPath ?? 'grants'
@@ -153,6 +192,7 @@ export function defineResourceGrants<const TActions extends string>(
       source: 'claims' as const,
       claimPath,
       actions: Object.freeze([...config.actions]) as ReadonlyArray<TActions>,
+      principalClaim,
     })
   }
 
@@ -160,6 +200,7 @@ export function defineResourceGrants<const TActions extends string>(
   const tableConfig = config as Extract<DefineResourceGrantsConfig<TActions>, { source: 'table' }>
   const tables = tableConfig.tables ?? {}
   const fallbackTable = tableConfig.fallbackTable
+  const actionSet = new Set<string>(config.actions)
 
   const tableEntries = Object.entries(tables)
   if (tableEntries.length === 0 && fallbackTable === undefined) {
@@ -174,17 +215,20 @@ export function defineResourceGrants<const TActions extends string>(
         '[prisma-guarddog] defineResourceGrants: tables{} keys (scope column names) must be non-empty strings.'
       )
     }
-    validatePerResourceGrantTable(scopeColumn, entry)
+    const where = `[prisma-guarddog] defineResourceGrants: tables["${scopeColumn}"]`
+    if (entry.name.length === 0) {
+      throw new Error(`${where}: name must be a non-empty string (the Postgres grant table name).`)
+    }
+    if (entry.resourceIdColumn !== undefined && entry.resourceIdColumn.length === 0) {
+      throw new Error(
+        `${where}: resourceIdColumn must be a non-empty string when provided (defaults to "${scopeColumn}").`
+      )
+    }
+    validateGrantPrincipalSpec(where, entry)
+    validateGrantActionSpec(where, entry, actionSet)
   }
   if (fallbackTable !== undefined) {
-    validatePolymorphicGrantTable(fallbackTable)
-  }
-
-  const principalClaim = tableConfig.principalClaim ?? 'sub'
-  if (principalClaim.length === 0) {
-    throw new Error(
-      '[prisma-guarddog] defineResourceGrants: principalClaim must be a non-empty string (default: "sub").'
-    )
+    validatePolymorphicGrantTable(fallbackTable, actionSet)
   }
 
   return Object.freeze({
@@ -217,44 +261,83 @@ function validateActions(actions: ReadonlyArray<string>): void {
   }
 }
 
-function validatePerResourceGrantTable(scopeColumn: string, entry: PerResourceGrantTable): void {
-  const where = `[prisma-guarddog] defineResourceGrants: tables["${scopeColumn}"]`
-  if (entry.name.length === 0) {
-    throw new Error(`${where}: name must be a non-empty string (the Postgres grant table name).`)
+/**
+ * Validate the principal spec: exactly one user-column spelling, and the
+ * group disjunction is all-or-nothing (`principalGroupColumn` ⇔
+ * `groupMemberTable`).
+ */
+function validateGrantPrincipalSpec(where: string, spec: GrantPrincipalSpec): void {
+  const hasLegacy = spec.principalColumn !== undefined && spec.principalColumn.length > 0
+  const hasExplicit = spec.principalUserColumn !== undefined && spec.principalUserColumn.length > 0
+  if (hasLegacy && hasExplicit) {
+    throw new Error(`${where}: set either \`principalColumn\` or \`principalUserColumn\` (they are aliases), not both.`)
   }
-  if (entry.principalColumn.length === 0) {
-    throw new Error(`${where}: principalColumn must be a non-empty string.`)
+  if (!hasLegacy && !hasExplicit) {
+    throw new Error(`${where}: a user principal column is required (\`principalColumn\` or \`principalUserColumn\`).`)
   }
-  const hasActions = entry.actionsColumn !== undefined && entry.actionsColumn.length > 0
-  const hasAction = entry.actionColumn !== undefined && entry.actionColumn.length > 0
-  if (hasActions === hasAction) {
+
+  const hasGroupCol = spec.principalGroupColumn !== undefined && spec.principalGroupColumn.length > 0
+  const hasGmt = spec.groupMemberTable !== undefined
+  if (hasGroupCol !== hasGmt) {
     throw new Error(
-      `${where}: exactly one of \`actionColumn\` (one row per action) or \`actionsColumn\` (text[] array) must be set. ` +
-        (hasActions ? 'Both are currently set.' : 'Neither is set.')
+      `${where}: \`principalGroupColumn\` and \`groupMemberTable\` must be declared together. ` +
+        (hasGroupCol ? 'groupMemberTable is missing.' : 'principalGroupColumn is missing.')
     )
   }
-  if (entry.resourceIdColumn !== undefined && entry.resourceIdColumn.length === 0) {
-    throw new Error(
-      `${where}: resourceIdColumn must be a non-empty string when provided (defaults to "${scopeColumn}").`
-    )
+  if (hasGmt) {
+    const gmt = spec.groupMemberTable!
+    if (gmt.name.length === 0 || gmt.userColumn.length === 0 || gmt.groupColumn.length === 0) {
+      throw new Error(`${where}: groupMemberTable.{name,userColumn,groupColumn} must all be non-empty strings.`)
+    }
   }
 }
 
-function validatePolymorphicGrantTable(fallback: PolymorphicGrantTable): void {
+/**
+ * Validate the action spec: exactly one of actionsColumn / actionColumn /
+ * roleColumn. When roleColumn is set, roleHierarchy is required, its entries
+ * must be unique + non-empty, and every entry must be a declared action.
+ */
+function validateGrantActionSpec(where: string, spec: GrantActionSpec, actionSet: ReadonlySet<string>): void {
+  const hasActions = spec.actionsColumn !== undefined && spec.actionsColumn.length > 0
+  const hasAction = spec.actionColumn !== undefined && spec.actionColumn.length > 0
+  const hasRole = spec.roleColumn !== undefined && spec.roleColumn.length > 0
+  const count = [hasActions, hasAction, hasRole].filter(Boolean).length
+  if (count !== 1) {
+    throw new Error(
+      `${where}: exactly one of \`actionsColumn\` (text[]), \`actionColumn\` (one row per action), or ` +
+        `\`roleColumn\` (rank-based) must be set. ${count} are currently set.`
+    )
+  }
+  if (hasRole) {
+    const hierarchy = spec.roleHierarchy
+    if (hierarchy === undefined || hierarchy.length === 0) {
+      throw new Error(`${where}: \`roleColumn\` requires a non-empty \`roleHierarchy\` (lowest → highest rank).`)
+    }
+    const seen = new Set<string>()
+    for (const rank of hierarchy) {
+      if (rank.length === 0) throw new Error(`${where}: roleHierarchy entries must be non-empty strings.`)
+      if (seen.has(rank)) throw new Error(`${where}: duplicate rank "${rank}" in roleHierarchy.`)
+      seen.add(rank)
+      if (!actionSet.has(rank)) {
+        throw new Error(
+          `${where}: roleHierarchy entry "${rank}" is not in the declared \`actions\` vocabulary. ` +
+            'Every rank must be a declared action so `p.hasGrant(rank, col)` type-checks.'
+        )
+      }
+    }
+  } else if (spec.roleHierarchy !== undefined || spec.roleColumnType !== undefined) {
+    throw new Error(`${where}: \`roleHierarchy\` / \`roleColumnType\` are only valid alongside \`roleColumn\`.`)
+  }
+}
+
+function validatePolymorphicGrantTable(fallback: PolymorphicGrantTable, actionSet: ReadonlySet<string>): void {
   const where = '[prisma-guarddog] defineResourceGrants: fallbackTable'
   if (fallback.name.length === 0) throw new Error(`${where}: name must be a non-empty string.`)
-  if (fallback.principalColumn.length === 0) throw new Error(`${where}: principalColumn must be a non-empty string.`)
   if (fallback.resourceTypeColumn.length === 0)
     throw new Error(`${where}: resourceTypeColumn must be a non-empty string.`)
   if (fallback.resourceIdColumn.length === 0) throw new Error(`${where}: resourceIdColumn must be a non-empty string.`)
-  const hasActions = fallback.actionsColumn !== undefined && fallback.actionsColumn.length > 0
-  const hasAction = fallback.actionColumn !== undefined && fallback.actionColumn.length > 0
-  if (hasActions === hasAction) {
-    throw new Error(
-      `${where}: exactly one of \`actionColumn\` or \`actionsColumn\` must be set. ` +
-        (hasActions ? 'Both are currently set.' : 'Neither is set.')
-    )
-  }
+  validateGrantPrincipalSpec(where, fallback)
+  validateGrantActionSpec(where, fallback, actionSet)
   const mapEntries = Object.entries(fallback.scopeColumnTypeMap ?? {})
   if (mapEntries.length === 0) {
     throw new Error(

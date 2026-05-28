@@ -172,6 +172,7 @@ describe('compileExpr — hasGrant (layer 3)', () => {
         source: 'claims',
         claimPath: 'permissions',
         actions: ['edit'],
+        principalClaim: 'sub',
       },
     })
     expect(compileExpr(hasGrant('edit', 'workspace_id'), ctx)).toContain("'permissions' -> 'edit'")
@@ -398,5 +399,91 @@ describe('compileExpr — hasGrant with source: "table"', () => {
       compileHasGrant: () => '/* override */',
     })
     expect(compileExpr(hasGrant('edit', 'workspaceId'), ctx)).toBe('/* override */')
+  })
+
+  // Rank-based grants (issue #5). baseCtx table is 'workbench'.
+  it('rank-based: emits the qualifying-suffix array with an enum cast', () => {
+    const ctx = baseCtx({
+      resourceGrants: defineResourceGrants({
+        source: 'table',
+        actions: ['READER', 'EDITOR', 'MANAGER', 'OWNER'] as const,
+        tables: {
+          workspaceId: {
+            name: 'workspace_grants',
+            principalColumn: 'user_id',
+            roleColumn: 'role',
+            roleHierarchy: ['READER', 'EDITOR', 'MANAGER', 'OWNER'],
+            roleColumnType: '"ResourceRole"',
+          },
+        },
+      }),
+    })
+    // hasGrant('EDITOR', ...) → EDITOR and every higher rank.
+    expect(compileExpr(hasGrant('EDITOR', 'workspaceId'), ctx)).toBe(
+      `EXISTS (SELECT 1 FROM workspace_grants WHERE workspace_grants.user_id = (current_setting('request.jwt.claims', true)::jsonb ->> 'sub')::uuid AND workspace_grants."workspaceId" = workbench."workspaceId" AND workspace_grants.role = ANY(ARRAY['EDITOR', 'MANAGER', 'OWNER']::"ResourceRole"[]))`
+    )
+  })
+
+  it('rank-based: highest rank yields a single-element array; no cast when roleColumnType omitted', () => {
+    const ctx = baseCtx({
+      resourceGrants: defineResourceGrants({
+        source: 'table',
+        actions: ['READER', 'EDITOR', 'OWNER'] as const,
+        tables: {
+          workspaceId: {
+            name: 'workspace_grants',
+            principalColumn: 'user_id',
+            roleColumn: 'role',
+            roleHierarchy: ['READER', 'EDITOR', 'OWNER'],
+          },
+        },
+      }),
+    })
+    expect(compileExpr(hasGrant('OWNER', 'workspaceId'), ctx)).toContain(`workspace_grants.role = ANY(ARRAY['OWNER'])`)
+  })
+
+  // Principal disjunction (issue #6).
+  it('principal disjunction: emits (user = ref OR group IN member-lookup)', () => {
+    const ctx = baseCtx({
+      resourceGrants: defineResourceGrants({
+        source: 'table',
+        actions: ['edit'] as const,
+        tables: {
+          workspaceId: {
+            name: 'workspace_grants',
+            principalUserColumn: 'user_id',
+            principalGroupColumn: 'group_id',
+            groupMemberTable: { name: 'org_group_members', userColumn: 'user_id', groupColumn: 'group_id' },
+            actionsColumn: 'actions',
+          },
+        },
+        principalClaim: 'user_id',
+      }),
+    })
+    expect(compileExpr(hasGrant('edit', 'workspaceId'), ctx)).toBe(
+      `EXISTS (SELECT 1 FROM workspace_grants WHERE (workspace_grants.user_id = (current_setting('request.jwt.claims', true)::jsonb ->> 'user_id')::uuid OR workspace_grants.group_id IN (SELECT org_group_members.group_id FROM org_group_members WHERE org_group_members.user_id = (current_setting('request.jwt.claims', true)::jsonb ->> 'user_id')::uuid)) AND workspace_grants."workspaceId" = workbench."workspaceId" AND 'edit' = ANY(workspace_grants.actions))`
+    )
+  })
+
+  it('rank + disjunction compose in one table config', () => {
+    const ctx = baseCtx({
+      resourceGrants: defineResourceGrants({
+        source: 'table',
+        actions: ['READER', 'EDITOR', 'OWNER'] as const,
+        tables: {
+          workspaceId: {
+            name: 'workspace_grants',
+            principalUserColumn: 'user_id',
+            principalGroupColumn: 'group_id',
+            groupMemberTable: { name: 'org_group_members', userColumn: 'user_id', groupColumn: 'group_id' },
+            roleColumn: 'role',
+            roleHierarchy: ['READER', 'EDITOR', 'OWNER'],
+          },
+        },
+      }),
+    })
+    const sql = compileExpr(hasGrant('EDITOR', 'workspaceId'), ctx)
+    expect(sql).toContain('workspace_grants.group_id IN (SELECT org_group_members.group_id')
+    expect(sql).toContain(`workspace_grants.role = ANY(ARRAY['EDITOR', 'OWNER'])`)
   })
 })

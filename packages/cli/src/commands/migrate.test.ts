@@ -62,4 +62,22 @@ describe('planMigrate()', () => {
     expect(plan.current.policies.size).toBe(0)
     expect(plan.target.policies.size).toBe(1)
   })
+
+  it('threads renderOverrides into renderOps (compileHasGrant override is applied)', () => {
+    const guard = new Guarddog({
+      claims: defineClaims({ accessor: 'request.jwt.claims', shape: (c) => ({ sub: c.uuid(), tenantId: c.uuid() }) }),
+      dbRoles: defineDbRoles({ app_user: { inherits: [], nologin: true } }),
+      appRoles: defineAppRoles({}),
+      resources: defineResources({ Tenant: { model: 'Tenant', id: 'id' } }),
+    })
+    guard
+      .model('Doc')
+      .policy('app_user')
+      .select((p) => p.hasGrant('edit', col('workspaceId')))
+
+    const plan = planMigrate(guard, empty(), {
+      compileHasGrant: () => 'CUSTOM_GRANT_SQL',
+    })
+    expect(plan.sql.some((s) => s.includes('CUSTOM_GRANT_SQL'))).toBe(true)
+  })
 })

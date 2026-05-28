@@ -43,6 +43,17 @@ describe('resolveConfig (pure)', () => {
     const cfg = resolveConfig({ cwd: '/tmp/proj' })
     expect(Object.isFrozen(cfg)).toBe(true)
   })
+
+  it('defaults renderOverrides to an empty object', () => {
+    const cfg = resolveConfig({ cwd: '/tmp/proj' })
+    expect(cfg.renderOverrides).toEqual({})
+  })
+
+  it('threads renderOverrides (compiler fns) through from the config file', () => {
+    const compileHasGrant = (): string => '/* custom */'
+    const cfg = resolveConfig({ cwd: '/tmp/proj', overrides: { renderOverrides: { compileHasGrant } } })
+    expect(cfg.renderOverrides.compileHasGrant).toBe(compileHasGrant)
+  })
 })
 
 describe('findConfigFile', () => {

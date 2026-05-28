@@ -26,6 +26,7 @@ export type { ResourceParentRef, ResourceSpec, ResourceTreeDefinition } from './
 
 export { defineResourceGrants } from './resource-grants.js'
 export type {
+  GroupMemberTable,
   PerResourceGrantTable,
   PolymorphicGrantTable,
   ResourceGrantsDefinition,

@@ -31,7 +31,7 @@ import pc from 'picocolors'
 
 import type { ResolvedConfig } from '../config.js'
 import { loadSchema, SchemaLoadError } from '../load.js'
-import { renderOps } from '../render-ops.js'
+import { renderOps, type RenderOverrides } from '../render-ops.js'
 import { formatSidecar, replayMigrationsDir, SIDECAR_FILENAME } from '../sidecar.js'
 
 export interface MigratePlan {
@@ -62,13 +62,18 @@ export interface MigrateResult {
 /**
  * Pure planning step: derive ops + rendered SQL without writing anything.
  * Exposed for tests and for a future `migrate --dry-run` flag.
+ *
+ * `renderOverrides` (optional) threads consumer-supplied predicate compilers
+ * — `compileHasGrant` and friends — into `renderOps`. `runMigrate` forwards
+ * `config.renderOverrides` here; direct callers can pass their own.
  */
-export function planMigrate(guard: Guarddog, current: State): MigratePlan {
+export function planMigrate(guard: Guarddog, current: State, renderOverrides: RenderOverrides = {}): MigratePlan {
   const target = compileToState(guard)
   const ops = diffStates(current, target)
   const sql = renderOps(ops, {
     claims: guard.config.claims,
     ...(guard.config.resourceGrants !== undefined && { resourceGrants: guard.config.resourceGrants }),
+    ...renderOverrides,
   })
   return Object.freeze({ ops, sql, current, target })
 }
@@ -86,7 +91,7 @@ export async function runMigrate(opts: MigrateOptions): Promise<MigrateResult> {
   }
 
   const current = await replayMigrationsDir(config.migrationsDir)
-  const plan = planMigrate(loaded.guard, current)
+  const plan = planMigrate(loaded.guard, current, config.renderOverrides)
 
   if (plan.ops.length === 0) {
     if (writeStdout) {

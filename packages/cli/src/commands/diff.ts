@@ -57,7 +57,7 @@ export async function runDiff(opts: DiffOptions): Promise<DiffResult> {
   }
 
   const current = await replayMigrationsDir(config.migrationsDir)
-  const plan = planMigrate(loaded.guard, current)
+  const plan = planMigrate(loaded.guard, current, config.renderOverrides)
   const hasChanges = plan.ops.length > 0
 
   if (writeStdout) writeSummary(plan.ops, plan.sql, hasChanges)

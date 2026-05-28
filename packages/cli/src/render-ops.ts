@@ -35,13 +35,24 @@ import {
   quoteString,
 } from '@flowchestra/prisma-guarddog-emitter-postgres-rls'
 
-export interface RenderContext {
-  readonly claims: ClaimsDefinition
-  readonly resourceGrants?: ResourceGrantsDefinition
+/**
+ * The four predicate-compiler overrides, factored out of `RenderContext` so
+ * the CLI config (`guarddog.config.ts` → `renderOverrides`) and the migrate
+ * pipeline can pass them around as a unit. When a consumer's authorization
+ * model doesn't fit the built-in templates (e.g. rank-based or
+ * group-disjunctive grants), they supply a `compileHasGrant` here and it
+ * wins over the source-based dispatch. See ADR-0024.
+ */
+export interface RenderOverrides {
   readonly compileHasAppRole?: HasAppRoleCompiler
   readonly compileHasGrant?: HasGrantCompiler
   readonly compileHasResourcePermission?: HasResourcePermissionCompiler
   readonly compileIsOwner?: IsOwnerCompiler
+}
+
+export interface RenderContext extends RenderOverrides {
+  readonly claims: ClaimsDefinition
+  readonly resourceGrants?: ResourceGrantsDefinition
 }
 
 /**

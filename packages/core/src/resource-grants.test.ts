@@ -144,7 +144,9 @@ describe('defineResourceGrants — source: "table" (per-resource tables)', () =>
           workspaceId: { name: 'workspace_grant', principalColumn: 'userId' },
         },
       })
-    ).toThrow(/exactly one of `actionColumn` .* or `actionsColumn` .* must be set.*Neither is set/)
+    ).toThrow(
+      /exactly one of `actionsColumn` .* `actionColumn` .* or `roleColumn` .* must be set\. 0 are currently set/
+    )
   })
 
   it('rejects both actionColumn and actionsColumn together', () => {
@@ -161,7 +163,9 @@ describe('defineResourceGrants — source: "table" (per-resource tables)', () =>
           },
         },
       })
-    ).toThrow(/Both are currently set/)
+    ).toThrow(
+      /exactly one of `actionsColumn` .* `actionColumn` .* or `roleColumn` .* must be set\. 2 are currently set/
+    )
   })
 
   it('rejects empty table name', () => {
@@ -261,7 +265,7 @@ describe('defineResourceGrants — source: "table" (polymorphic fallback)', () =
           scopeColumnTypeMap: { tenantId: 'Tenant' },
         },
       })
-    ).toThrow(/exactly one of `actionColumn` or `actionsColumn` must be set/)
+    ).toThrow(/exactly one of `actionsColumn` .* `actionColumn` .* or `roleColumn` .* must be set/)
   })
 
   it('accepts both per-resource tables and a polymorphic fallback together', () => {
@@ -284,5 +288,173 @@ describe('defineResourceGrants — source: "table" (polymorphic fallback)', () =
     )
     expect(Object.keys(table.tables)).toEqual(['workspaceId'])
     expect(table.fallbackTable?.name).toBe('resource_grant')
+  })
+})
+
+describe('defineResourceGrants — source: "table" (rank-based, issue #5)', () => {
+  it('accepts roleColumn + roleHierarchy and preserves them', () => {
+    const table = asTable(
+      defineResourceGrants({
+        source: 'table',
+        actions: ['READER', 'EDITOR', 'MANAGER', 'OWNER'] as const,
+        tables: {
+          workspaceId: {
+            name: 'workspace_grants',
+            principalColumn: 'user_id',
+            roleColumn: 'role',
+            roleHierarchy: ['READER', 'EDITOR', 'MANAGER', 'OWNER'],
+            roleColumnType: '"ResourceRole"',
+          },
+        },
+      })
+    )
+    const entry = table.tables['workspaceId']
+    expect(entry?.roleColumn).toBe('role')
+    expect(entry?.roleHierarchy).toEqual(['READER', 'EDITOR', 'MANAGER', 'OWNER'])
+    expect(entry?.roleColumnType).toBe('"ResourceRole"')
+  })
+
+  it('rejects roleColumn without roleHierarchy', () => {
+    expect(() =>
+      defineResourceGrants({
+        source: 'table',
+        actions: ['READER', 'EDITOR'] as const,
+        tables: { workspaceId: { name: 'g', principalColumn: 'user_id', roleColumn: 'role' } },
+      })
+    ).toThrow(/`roleColumn` requires a non-empty `roleHierarchy`/)
+  })
+
+  it('rejects a roleHierarchy entry not in the declared actions vocabulary', () => {
+    expect(() =>
+      defineResourceGrants({
+        source: 'table',
+        actions: ['READER', 'EDITOR'] as const,
+        tables: {
+          workspaceId: {
+            name: 'g',
+            principalColumn: 'user_id',
+            roleColumn: 'role',
+            roleHierarchy: ['READER', 'EDITOR', 'MANAGER'], // MANAGER not in actions
+          },
+        },
+      })
+    ).toThrow(/roleHierarchy entry "MANAGER" is not in the declared `actions` vocabulary/)
+  })
+
+  it('rejects more than one action shape (roleColumn + actionsColumn)', () => {
+    expect(() =>
+      defineResourceGrants({
+        source: 'table',
+        actions: ['READER'] as const,
+        tables: {
+          workspaceId: {
+            name: 'g',
+            principalColumn: 'user_id',
+            roleColumn: 'role',
+            roleHierarchy: ['READER'],
+            actionsColumn: 'actions',
+          },
+        },
+      })
+    ).toThrow(/exactly one of .* must be set\. 2 are currently set/)
+  })
+
+  it('rejects roleHierarchy without roleColumn', () => {
+    expect(() =>
+      defineResourceGrants({
+        source: 'table',
+        actions: ['READER'] as const,
+        tables: {
+          workspaceId: { name: 'g', principalColumn: 'user_id', actionsColumn: 'actions', roleHierarchy: ['READER'] },
+        },
+      })
+    ).toThrow(/`roleHierarchy` \/ `roleColumnType` are only valid alongside `roleColumn`/)
+  })
+})
+
+describe('defineResourceGrants — source: "table" (principal disjunction, issue #6)', () => {
+  it('accepts principalUserColumn + principalGroupColumn + groupMemberTable', () => {
+    const table = asTable(
+      defineResourceGrants({
+        source: 'table',
+        actions: ['edit'] as const,
+        tables: {
+          workspaceId: {
+            name: 'workspace_grants',
+            principalUserColumn: 'user_id',
+            principalGroupColumn: 'group_id',
+            groupMemberTable: { name: 'org_group_members', userColumn: 'user_id', groupColumn: 'group_id' },
+            actionsColumn: 'actions',
+          },
+        },
+      })
+    )
+    const entry = table.tables['workspaceId']
+    expect(entry?.principalUserColumn).toBe('user_id')
+    expect(entry?.principalGroupColumn).toBe('group_id')
+    expect(entry?.groupMemberTable?.name).toBe('org_group_members')
+  })
+
+  it('rejects both principalColumn and principalUserColumn (aliases)', () => {
+    expect(() =>
+      defineResourceGrants({
+        source: 'table',
+        actions: ['edit'] as const,
+        tables: {
+          workspaceId: {
+            name: 'g',
+            principalColumn: 'user_id',
+            principalUserColumn: 'user_id',
+            actionsColumn: 'actions',
+          },
+        },
+      })
+    ).toThrow(/set either `principalColumn` or `principalUserColumn` .* not both/)
+  })
+
+  it('rejects neither principalColumn nor principalUserColumn', () => {
+    expect(() =>
+      defineResourceGrants({
+        source: 'table',
+        actions: ['edit'] as const,
+        tables: {
+          workspaceId: { name: 'g', actionsColumn: 'actions' },
+        },
+      })
+    ).toThrow(/a user principal column is required/)
+  })
+
+  it('rejects principalGroupColumn without groupMemberTable', () => {
+    expect(() =>
+      defineResourceGrants({
+        source: 'table',
+        actions: ['edit'] as const,
+        tables: {
+          workspaceId: {
+            name: 'g',
+            principalUserColumn: 'user_id',
+            principalGroupColumn: 'group_id',
+            actionsColumn: 'actions',
+          },
+        },
+      })
+    ).toThrow(/`principalGroupColumn` and `groupMemberTable` must be declared together.*groupMemberTable is missing/)
+  })
+
+  it('rejects groupMemberTable without principalGroupColumn', () => {
+    expect(() =>
+      defineResourceGrants({
+        source: 'table',
+        actions: ['edit'] as const,
+        tables: {
+          workspaceId: {
+            name: 'g',
+            principalUserColumn: 'user_id',
+            groupMemberTable: { name: 'org_group_members', userColumn: 'user_id', groupColumn: 'group_id' },
+            actionsColumn: 'actions',
+          },
+        },
+      })
+    ).toThrow(/must be declared together.*principalGroupColumn is missing/)
   })
 })
