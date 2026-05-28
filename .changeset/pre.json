@@ -15,6 +15,7 @@
   },
   "changesets": [
     "cli-emit-diff-import-and-lint-flag",
+    "feat-hasgrant-table-hint-autocomplete",
     "feat-hasgrant-table-hint",
     "feat-rank-group-grants-and-cli-overrides",
     "feat-table-backed-resource-grants",
