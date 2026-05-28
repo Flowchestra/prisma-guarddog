@@ -1,5 +1,13 @@
 # @flowchestra/prisma-guarddog-importer-prisma
 
+## 0.1.0-alpha.3
+
+### Patch Changes
+
+- Updated dependencies
+  [[`106bb33`](https://github.com/Flowchestra/prisma-guarddog/commit/106bb3331ae14325ac320255d85b70ceda48a6d0)]:
+  - @flowchestra/prisma-guarddog-core@0.1.0-alpha.3
+
 ## 0.1.0-alpha.2
 
 ### Patch Changes
