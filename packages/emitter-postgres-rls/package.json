@@ -1,6 +1,6 @@
 {
   "name": "@flowchestra/prisma-guarddog-emitter-postgres-rls",
-  "version": "0.1.0-alpha.4",
+  "version": "0.1.0-alpha.5",
   "description": "Postgres RLS DDL emitter for prisma-guarddog: CREATE POLICY, ENABLE/FORCE ROW LEVEL SECURITY, table-level REVOKE",
   "license": "MIT",
   "repository": {

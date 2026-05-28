@@ -1,6 +1,6 @@
 {
   "name": "@flowchestra/prisma-guarddog-importer-postgres",
-  "version": "0.1.0-alpha.4",
+  "version": "0.1.0-alpha.5",
   "description": "Postgres pg_policies + column privileges importer for prisma-guarddog (scaffold mode)",
   "license": "MIT",
   "repository": {
