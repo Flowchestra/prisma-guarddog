@@ -51,23 +51,25 @@ export interface SchemaDefinition<
   TAppRoles extends string = string,
   TResources extends string = string,
   TActions extends string = string,
+  TGrantTableKeys extends string = string,
 > {
   readonly claims: ClaimsDefinition<TClaimsShape>
   readonly dbRoles: DbRolesDefinition<TDbRoles>
   readonly appRoles: AppRolesDefinition<TAppRoles>
   readonly resources: ResourceTreeDefinition<TResources>
   /** Optional layer-3 declaration. Required only if any policy uses `p.hasGrant(...)`. */
-  readonly resourceGrants?: ResourceGrantsDefinition<TActions>
+  readonly resourceGrants?: ResourceGrantsDefinition<TActions, TGrantTableKeys>
   /**
    * Policy authoring callback. Receives a Guarddog instance with the four
    * primitives + resourceGrants already wired. The callback registers
    * policies via `guard.model(...).policy(...)`, `guard.polymorphic(...)`,
-   * `guard.noPolicy(...)`, etc.
+   * `guard.noPolicy(...)`, etc. The grant-table key union flows here so
+   * `p.hasGrant(..., { table })` autocompletes (ADR-0025 / #12).
    *
    * Called exactly once per `materializeSchema` invocation. Should be
    * referentially transparent — no side effects, no I/O.
    */
-  readonly policies: (guard: Guarddog<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions>) => void
+  readonly policies: (guard: Guarddog<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions, TGrantTableKeys>) => void
 }
 
 /**
@@ -85,9 +87,10 @@ export function defineSchema<
   TAppRoles extends string,
   TResources extends string,
   TActions extends string = string,
+  TGrantTableKeys extends string = string,
 >(
-  schema: SchemaDefinition<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions>
-): SchemaDefinition<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions> {
+  schema: SchemaDefinition<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions, TGrantTableKeys>
+): SchemaDefinition<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions, TGrantTableKeys> {
   return Object.freeze({ ...schema })
 }
 
@@ -106,10 +109,11 @@ export function materializeSchema<
   TAppRoles extends string,
   TResources extends string,
   TActions extends string,
+  TGrantTableKeys extends string = string,
 >(
-  schema: SchemaDefinition<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions>
-): Guarddog<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions> {
-  const guard = new Guarddog<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions>({
+  schema: SchemaDefinition<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions, TGrantTableKeys>
+): Guarddog<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions, TGrantTableKeys> {
+  const guard = new Guarddog<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions, TGrantTableKeys>({
     claims: schema.claims,
     dbRoles: schema.dbRoles,
     appRoles: schema.appRoles,

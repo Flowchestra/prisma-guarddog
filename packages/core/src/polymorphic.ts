@@ -46,23 +46,29 @@ import type {
 import type { ClaimsDefinition, ClaimsShape, InferClaims } from './claims.js'
 import { FluentExpr, PredicateBuilder } from './predicate.js'
 
-type PredicateFn<TClaims> = (p: PredicateBuilder<TClaims>) => FluentExpr
+type PredicateFn<TClaims, TGrantTableKeys extends string = string> = (
+  p: PredicateBuilder<TClaims, TGrantTableKeys>
+) => FluentExpr
 
 /**
  * Internal protocol: the polymorphic builder hierarchy calls back into the
  * Guarddog instance for the predicate builder factory only. Avoids a
  * circular import with guarddog.ts.
  */
-export interface PolymorphicHost<TClaimsShape extends ClaimsShape> {
-  _buildPredicate(): PredicateBuilder<InferClaims<ClaimsDefinition<TClaimsShape>>>
+export interface PolymorphicHost<TClaimsShape extends ClaimsShape, TGrantTableKeys extends string = string> {
+  _buildPredicate(): PredicateBuilder<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys>
 }
 
-export class PolymorphicBuilder<TClaimsShape extends ClaimsShape, TDbRoles extends string> {
+export class PolymorphicBuilder<
+  TClaimsShape extends ClaimsShape,
+  TDbRoles extends string,
+  TGrantTableKeys extends string = string,
+> {
   private _table: string | undefined
-  private readonly _targets = new Map<string, PolymorphicTargetBuilder<TClaimsShape, TDbRoles>>()
+  private readonly _targets = new Map<string, PolymorphicTargetBuilder<TClaimsShape, TDbRoles, TGrantTableKeys>>()
 
   constructor(
-    private readonly _host: PolymorphicHost<TClaimsShape>,
+    private readonly _host: PolymorphicHost<TClaimsShape, TGrantTableKeys>,
     readonly modelName: string,
     readonly discriminator: string
   ) {}
@@ -87,7 +93,10 @@ export class PolymorphicBuilder<TClaimsShape extends ClaimsShape, TDbRoles exten
    * so split authoring is safe; the `model` option is enforced consistent on
    * re-fetch (mismatched targetModelName is a fail-fast bug).
    */
-  target(discriminatorValue: string, opts: { model: string }): PolymorphicTargetBuilder<TClaimsShape, TDbRoles> {
+  target(
+    discriminatorValue: string,
+    opts: { model: string }
+  ): PolymorphicTargetBuilder<TClaimsShape, TDbRoles, TGrantTableKeys> {
     if (discriminatorValue.length === 0) {
       throw new Error(
         `[prisma-guarddog] PolymorphicBuilder("${this.modelName}").target(): discriminatorValue must be a non-empty string.`
@@ -109,7 +118,11 @@ export class PolymorphicBuilder<TClaimsShape extends ClaimsShape, TDbRoles exten
       }
       return existing
     }
-    const builder = new PolymorphicTargetBuilder<TClaimsShape, TDbRoles>(this._host, discriminatorValue, opts.model)
+    const builder = new PolymorphicTargetBuilder<TClaimsShape, TDbRoles, TGrantTableKeys>(
+      this._host,
+      discriminatorValue,
+      opts.model
+    )
     this._targets.set(discriminatorValue, builder)
     return builder
   }
@@ -125,11 +138,18 @@ export class PolymorphicBuilder<TClaimsShape extends ClaimsShape, TDbRoles exten
   }
 }
 
-export class PolymorphicTargetBuilder<TClaimsShape extends ClaimsShape, TDbRoles extends string> {
-  private readonly _policies = new Map<string, PolymorphicTargetPolicyBuilder<TClaimsShape, TDbRoles>>()
+export class PolymorphicTargetBuilder<
+  TClaimsShape extends ClaimsShape,
+  TDbRoles extends string,
+  TGrantTableKeys extends string = string,
+> {
+  private readonly _policies = new Map<
+    string,
+    PolymorphicTargetPolicyBuilder<TClaimsShape, TDbRoles, TGrantTableKeys>
+  >()
 
   constructor(
-    private readonly _host: PolymorphicHost<TClaimsShape>,
+    private readonly _host: PolymorphicHost<TClaimsShape, TGrantTableKeys>,
     readonly discriminatorValue: string,
     readonly targetModelName: string
   ) {}
@@ -138,7 +158,7 @@ export class PolymorphicTargetBuilder<TClaimsShape extends ClaimsShape, TDbRoles
    * Begin authoring a policy for this target + dbRole. Idempotent — repeated
    * calls with the same dbRole return the same builder.
    */
-  policy(dbRole: TDbRoles): PolymorphicTargetPolicyBuilder<TClaimsShape, TDbRoles> {
+  policy(dbRole: TDbRoles): PolymorphicTargetPolicyBuilder<TClaimsShape, TDbRoles, TGrantTableKeys> {
     if ((dbRole as string).length === 0) {
       throw new Error(
         `[prisma-guarddog] PolymorphicTargetBuilder("${this.discriminatorValue}").policy(): dbRole must be a non-empty string.`
@@ -146,7 +166,7 @@ export class PolymorphicTargetBuilder<TClaimsShape extends ClaimsShape, TDbRoles
     }
     let builder = this._policies.get(dbRole as string)
     if (builder === undefined) {
-      builder = new PolymorphicTargetPolicyBuilder<TClaimsShape, TDbRoles>(this._host, dbRole)
+      builder = new PolymorphicTargetPolicyBuilder<TClaimsShape, TDbRoles, TGrantTableKeys>(this._host, dbRole)
       this._policies.set(dbRole as string, builder)
     }
     return builder
@@ -162,7 +182,11 @@ export class PolymorphicTargetBuilder<TClaimsShape extends ClaimsShape, TDbRoles
   }
 }
 
-export class PolymorphicTargetPolicyBuilder<TClaimsShape extends ClaimsShape, TDbRoles extends string> {
+export class PolymorphicTargetPolicyBuilder<
+  TClaimsShape extends ClaimsShape,
+  TDbRoles extends string,
+  TGrantTableKeys extends string = string,
+> {
   private _select: SelectSpec | undefined
   private _insert: InsertSpec | undefined
   private _update: UpdateSpec | undefined
@@ -170,7 +194,7 @@ export class PolymorphicTargetPolicyBuilder<TClaimsShape extends ClaimsShape, TD
   private readonly _todos: string[] = []
 
   constructor(
-    private readonly _host: PolymorphicHost<TClaimsShape>,
+    private readonly _host: PolymorphicHost<TClaimsShape, TGrantTableKeys>,
     readonly dbRole: TDbRoles
   ) {}
 
@@ -178,13 +202,13 @@ export class PolymorphicTargetPolicyBuilder<TClaimsShape extends ClaimsShape, TD
    * Define the `USING` predicate for SELECT. The emitter prepends
    * `<discriminator> = '<value>'` automatically; do not restate it.
    */
-  select(fn: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>>): this {
+  select(fn: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys>): this {
     this._select = Object.freeze({ using: freezeExprDeep(fn(this._host._buildPredicate()).ast) })
     return this
   }
 
   /** Define the `WITH CHECK` predicate for INSERT. ADR-0005. */
-  insert(spec: { check: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>> }): this {
+  insert(spec: { check: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys> }): this {
     this._insert = Object.freeze({
       check: freezeExprDeep(spec.check(this._host._buildPredicate()).ast),
     })
@@ -196,8 +220,8 @@ export class PolymorphicTargetPolicyBuilder<TClaimsShape extends ClaimsShape, TD
    * for UPDATE. Both are mandatory. ADR-0005.
    */
   update(spec: {
-    using: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>>
-    check: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>>
+    using: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys>
+    check: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys>
   }): this {
     const p = this._host._buildPredicate()
     this._update = Object.freeze({
@@ -208,7 +232,7 @@ export class PolymorphicTargetPolicyBuilder<TClaimsShape extends ClaimsShape, TD
   }
 
   /** Define the `USING` predicate for DELETE. */
-  delete(spec: { using: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>> }): this {
+  delete(spec: { using: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys> }): this {
     this._delete = Object.freeze({
       using: freezeExprDeep(spec.using(this._host._buildPredicate()).ast),
     })

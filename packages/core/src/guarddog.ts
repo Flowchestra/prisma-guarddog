@@ -57,6 +57,7 @@ export interface GuarddogConfig<
   TAppRoles extends string,
   TResources extends string,
   TActions extends string = string,
+  TGrantTableKeys extends string = string,
 > {
   readonly claims: ClaimsDefinition<TClaimsShape>
   readonly dbRoles: DbRolesDefinition<TDbRoles>
@@ -66,11 +67,17 @@ export interface GuarddogConfig<
    * Optional resource-grants layer (layer 3). Required if any policy uses
    * `p.hasGrant(action, col)`. Omit for projects using only dbRoles +
    * appRoles + per-resource jsonb permissions.
+   *
+   * `TGrantTableKeys` (inferred from a table-source `tables` map) flows to
+   * `p.hasGrant(..., { table })` so the hint autocompletes against the
+   * declared keys. See ADR-0025 / #12.
    */
-  readonly resourceGrants?: ResourceGrantsDefinition<TActions>
+  readonly resourceGrants?: ResourceGrantsDefinition<TActions, TGrantTableKeys>
 }
 
-type PredicateFn<TClaims> = (p: PredicateBuilder<TClaims>) => FluentExpr
+type PredicateFn<TClaims, TGrantTableKeys extends string = string> = (
+  p: PredicateBuilder<TClaims, TGrantTableKeys>
+) => FluentExpr
 
 export class Guarddog<
   TClaimsShape extends ClaimsShape = ClaimsShape,
@@ -78,14 +85,15 @@ export class Guarddog<
   TAppRoles extends string = string,
   TResources extends string = string,
   TActions extends string = string,
+  TGrantTableKeys extends string = string,
 > {
-  readonly config: GuarddogConfig<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions>
-  private readonly _modelBuilders = new Map<string, ModelBuilder<TClaimsShape, TDbRoles>>()
-  private readonly _policies = new Map<string, PolicyBuilder<TClaimsShape, TDbRoles>>()
+  readonly config: GuarddogConfig<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions, TGrantTableKeys>
+  private readonly _modelBuilders = new Map<string, ModelBuilder<TClaimsShape, TDbRoles, TGrantTableKeys>>()
+  private readonly _policies = new Map<string, PolicyBuilder<TClaimsShape, TDbRoles, TGrantTableKeys>>()
   private readonly _noPolicies = new Map<string, NoPolicyAst>()
-  private readonly _polymorphics = new Map<string, PolymorphicBuilder<TClaimsShape, TDbRoles>>()
+  private readonly _polymorphics = new Map<string, PolymorphicBuilder<TClaimsShape, TDbRoles, TGrantTableKeys>>()
 
-  constructor(config: GuarddogConfig<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions>) {
+  constructor(config: GuarddogConfig<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions, TGrantTableKeys>) {
     this.config = config
   }
 
@@ -133,7 +141,7 @@ export class Guarddog<
    * `modelName` return the same `ModelBuilder` so multi-file authoring is
    * idempotent.
    */
-  model(modelName: string): ModelBuilder<TClaimsShape, TDbRoles> {
+  model(modelName: string): ModelBuilder<TClaimsShape, TDbRoles, TGrantTableKeys> {
     if (modelName.length === 0) {
       throw new Error('[prisma-guarddog] Guarddog.model(): modelName must be a non-empty string.')
     }
@@ -151,7 +159,7 @@ export class Guarddog<
     }
     let builder = this._modelBuilders.get(modelName)
     if (builder === undefined) {
-      builder = new ModelBuilder<TClaimsShape, TDbRoles>(this, modelName)
+      builder = new ModelBuilder<TClaimsShape, TDbRoles, TGrantTableKeys>(this, modelName)
       this._modelBuilders.set(modelName, builder)
     }
     return builder
@@ -161,7 +169,7 @@ export class Guarddog<
    * @internal — called by PolicyBuilder during construction. Public consumers
    * should not call this directly.
    */
-  _registerPolicy(key: string, builder: PolicyBuilder<TClaimsShape, TDbRoles>): void {
+  _registerPolicy(key: string, builder: PolicyBuilder<TClaimsShape, TDbRoles, TGrantTableKeys>): void {
     const existing = this._policies.get(key)
     if (existing !== undefined && existing !== builder) {
       throw new Error(
@@ -176,13 +184,13 @@ export class Guarddog<
    * exists; otherwise undefined. Used by ModelBuilder.policy() to enforce
    * idempotence.
    */
-  _findPolicy(key: string): PolicyBuilder<TClaimsShape, TDbRoles> | undefined {
+  _findPolicy(key: string): PolicyBuilder<TClaimsShape, TDbRoles, TGrantTableKeys> | undefined {
     return this._policies.get(key)
   }
 
-  /** Construct the predicate builder threaded with the registered claim shape. */
-  _buildPredicate(): PredicateBuilder<InferClaims<ClaimsDefinition<TClaimsShape>>> {
-    return new PredicateBuilder<InferClaims<ClaimsDefinition<TClaimsShape>>>()
+  /** Construct the predicate builder threaded with the registered claim shape + grant-table keys. */
+  _buildPredicate(): PredicateBuilder<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys> {
+    return new PredicateBuilder<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys>()
   }
 
   /**
@@ -224,7 +232,10 @@ export class Guarddog<
    *
    * See `./polymorphic.ts` for the per-target authoring API.
    */
-  polymorphic(modelName: string, opts: { discriminator: string }): PolymorphicBuilder<TClaimsShape, TDbRoles> {
+  polymorphic(
+    modelName: string,
+    opts: { discriminator: string }
+  ): PolymorphicBuilder<TClaimsShape, TDbRoles, TGrantTableKeys> {
     if (modelName.length === 0) {
       throw new Error('[prisma-guarddog] Guarddog.polymorphic(): modelName must be a non-empty string.')
     }
@@ -256,8 +267,10 @@ export class Guarddog<
       }
       return existing
     }
-    const builder = new PolymorphicBuilder<TClaimsShape, TDbRoles>(
-      this as unknown as { _buildPredicate(): PredicateBuilder<InferClaims<ClaimsDefinition<TClaimsShape>>> },
+    const builder = new PolymorphicBuilder<TClaimsShape, TDbRoles, TGrantTableKeys>(
+      this as unknown as {
+        _buildPredicate(): PredicateBuilder<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys>
+      },
       modelName,
       opts.discriminator
     )
@@ -275,12 +288,16 @@ export class Guarddog<
   }
 }
 
-export class ModelBuilder<TClaimsShape extends ClaimsShape, TDbRoles extends string> {
+export class ModelBuilder<
+  TClaimsShape extends ClaimsShape,
+  TDbRoles extends string,
+  TGrantTableKeys extends string = string,
+> {
   private _table: string | undefined
   private _columnPrivileges = new Map<string, ColumnPrivilegeGrant>()
 
   constructor(
-    private readonly _guard: Guarddog<TClaimsShape, TDbRoles>,
+    private readonly _guard: Guarddog<TClaimsShape, TDbRoles, string, string, string, TGrantTableKeys>,
     readonly modelName: string
   ) {}
 
@@ -359,20 +376,29 @@ export class ModelBuilder<TClaimsShape extends ClaimsShape, TDbRoles extends str
    * Begin authoring a policy for a specific Postgres role. Repeated calls
    * with the same `dbRole` return the same `PolicyBuilder`.
    */
-  policy(dbRole: TDbRoles): PolicyBuilder<TClaimsShape, TDbRoles> {
+  policy(dbRole: TDbRoles): PolicyBuilder<TClaimsShape, TDbRoles, TGrantTableKeys> {
     if ((dbRole as string).length === 0) {
       throw new Error('[prisma-guarddog] ModelBuilder.policy(): dbRole must be a non-empty string.')
     }
     const key = policyKey(this.modelName, dbRole)
     const existing = this._guard._findPolicy(key)
     if (existing !== undefined) return existing
-    const builder = new PolicyBuilder<TClaimsShape, TDbRoles>(this._guard, this.modelName, dbRole, () => this._table)
+    const builder = new PolicyBuilder<TClaimsShape, TDbRoles, TGrantTableKeys>(
+      this._guard,
+      this.modelName,
+      dbRole,
+      () => this._table
+    )
     this._guard._registerPolicy(key, builder)
     return builder
   }
 }
 
-export class PolicyBuilder<TClaimsShape extends ClaimsShape, TDbRoles extends string> {
+export class PolicyBuilder<
+  TClaimsShape extends ClaimsShape,
+  TDbRoles extends string,
+  TGrantTableKeys extends string = string,
+> {
   private _select: SelectSpec | undefined
   private _insert: InsertSpec | undefined
   private _update: UpdateSpec | undefined
@@ -380,7 +406,7 @@ export class PolicyBuilder<TClaimsShape extends ClaimsShape, TDbRoles extends st
   private readonly _todos: string[] = []
 
   constructor(
-    private readonly _guard: Guarddog<TClaimsShape, TDbRoles>,
+    private readonly _guard: Guarddog<TClaimsShape, TDbRoles, string, string, string, TGrantTableKeys>,
     readonly modelName: string,
     readonly dbRole: TDbRoles,
     private readonly _getTable: () => string | undefined
@@ -390,7 +416,7 @@ export class PolicyBuilder<TClaimsShape extends ClaimsShape, TDbRoles extends st
    * Define the `USING` predicate for SELECT. Re-calling overwrites the prior
    * definition for this verb.
    */
-  select(fn: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>>): this {
+  select(fn: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys>): this {
     this._select = Object.freeze({ using: freezeExprDeep(fn(this._guard._buildPredicate()).ast) })
     return this
   }
@@ -399,7 +425,7 @@ export class PolicyBuilder<TClaimsShape extends ClaimsShape, TDbRoles extends st
    * Define the `WITH CHECK` predicate for INSERT. INSERT has no `USING` —
    * Postgres uses the CHECK clause to evaluate new rows. ADR-0005.
    */
-  insert(spec: { check: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>> }): this {
+  insert(spec: { check: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys> }): this {
     this._insert = Object.freeze({ check: freezeExprDeep(spec.check(this._guard._buildPredicate()).ast) })
     return this
   }
@@ -410,8 +436,8 @@ export class PolicyBuilder<TClaimsShape extends ClaimsShape, TDbRoles extends st
    * ADR-0005.
    */
   update(spec: {
-    using: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>>
-    check: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>>
+    using: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys>
+    check: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys>
   }): this {
     const p = this._guard._buildPredicate()
     this._update = Object.freeze({
@@ -422,7 +448,7 @@ export class PolicyBuilder<TClaimsShape extends ClaimsShape, TDbRoles extends st
   }
 
   /** Define the `USING` predicate for DELETE. */
-  delete(spec: { using: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>> }): this {
+  delete(spec: { using: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys> }): this {
     this._delete = Object.freeze({ using: freezeExprDeep(spec.using(this._guard._buildPredicate()).ast) })
     return this
   }

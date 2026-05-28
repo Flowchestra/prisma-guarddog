@@ -137,8 +137,13 @@ export interface PolymorphicGrantTable extends GrantPrincipalSpec, GrantActionSp
 /**
  * Discriminated by `source`. Both variants carry `principalClaim`
  * (defaulted to 'sub' at construction).
+ *
+ * `TTableKeys` captures the `tables`-map key union (table source) so a
+ * downstream `p.hasGrant(action, col, { table })` can autocomplete + type-
+ * check the hint against the declared keys (ADR-0025 / #12). Defaults to
+ * `string` — claims-source and untyped references stay unconstrained.
  */
-export type ResourceGrantsDefinition<TActions extends string = string> =
+export type ResourceGrantsDefinition<TActions extends string = string, TTableKeys extends string = string> =
   | {
       readonly source: 'claims'
       readonly claimPath: string
@@ -148,12 +153,12 @@ export type ResourceGrantsDefinition<TActions extends string = string> =
   | {
       readonly source: 'table'
       readonly actions: ReadonlyArray<TActions>
-      readonly tables: Readonly<Record<string, PerResourceGrantTable>>
+      readonly tables: Readonly<Record<TTableKeys, PerResourceGrantTable>>
       readonly fallbackTable: PolymorphicGrantTable | undefined
       readonly principalClaim: string
     }
 
-type DefineResourceGrantsConfig<TActions extends string> =
+type DefineResourceGrantsConfig<TActions extends string, TTableKeys extends string> =
   | {
       readonly source?: 'claims'
       readonly claimPath?: string
@@ -163,14 +168,14 @@ type DefineResourceGrantsConfig<TActions extends string> =
   | {
       readonly source: 'table'
       readonly actions: ReadonlyArray<TActions>
-      readonly tables?: Readonly<Record<string, PerResourceGrantTable>>
+      readonly tables?: Readonly<Record<TTableKeys, PerResourceGrantTable>>
       readonly fallbackTable?: PolymorphicGrantTable
       readonly principalClaim?: string
     }
 
-export function defineResourceGrants<const TActions extends string>(
-  config: DefineResourceGrantsConfig<TActions>
-): ResourceGrantsDefinition<TActions> {
+export function defineResourceGrants<const TActions extends string, const TTableKeys extends string = string>(
+  config: DefineResourceGrantsConfig<TActions, TTableKeys>
+): ResourceGrantsDefinition<TActions, TTableKeys> {
   validateActions(config.actions)
 
   const source: ResourceGrantsSource = config.source ?? 'claims'
@@ -197,12 +202,12 @@ export function defineResourceGrants<const TActions extends string>(
   }
 
   // source === 'table'
-  const tableConfig = config as Extract<DefineResourceGrantsConfig<TActions>, { source: 'table' }>
-  const tables = tableConfig.tables ?? {}
+  const tableConfig = config as Extract<DefineResourceGrantsConfig<TActions, TTableKeys>, { source: 'table' }>
+  const tables = tableConfig.tables ?? ({} as Readonly<Record<TTableKeys, PerResourceGrantTable>>)
   const fallbackTable = tableConfig.fallbackTable
   const actionSet = new Set<string>(config.actions)
 
-  const tableEntries = Object.entries(tables)
+  const tableEntries = Object.entries(tables) as Array<[string, PerResourceGrantTable]>
   if (tableEntries.length === 0 && fallbackTable === undefined) {
     throw new Error(
       "[prisma-guarddog] defineResourceGrants({ source: 'table' }): must declare at least one of `tables` (per-resource) or `fallbackTable` (polymorphic). " +
@@ -234,7 +239,7 @@ export function defineResourceGrants<const TActions extends string>(
   return Object.freeze({
     source: 'table' as const,
     actions: Object.freeze([...config.actions]) as ReadonlyArray<TActions>,
-    tables: Object.freeze({ ...tables }),
+    tables: Object.freeze({ ...tables }) as Readonly<Record<TTableKeys, PerResourceGrantTable>>,
     fallbackTable: fallbackTable === undefined ? undefined : Object.freeze({ ...fallbackTable }),
     principalClaim,
   })

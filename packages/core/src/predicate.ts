@@ -94,7 +94,7 @@ export function col(name: string): FluentExpr {
  * so that `p.claim(key)` is type-checked against the actual keys of the
  * configured claims.
  */
-export class PredicateBuilder<TClaims = Record<string, unknown>> {
+export class PredicateBuilder<TClaims = Record<string, unknown>, TGrantTableKeys extends string = string> {
   /**
    * Read a claim. The string key is constrained to the registered claim names.
    *
@@ -195,7 +195,7 @@ export class PredicateBuilder<TClaims = Record<string, unknown>> {
    * the claims source. See ADR-0025. (alpha.5 will add autocomplete on the
    * key; today it's a validated string — an unknown key throws at compile.)
    */
-  hasGrant(action: string, scopeColumn: FluentExpr, opts?: { readonly table?: string }): FluentExpr {
+  hasGrant(action: string, scopeColumn: FluentExpr, opts?: { readonly table?: TGrantTableKeys }): FluentExpr {
     if (action.length === 0) {
       throw new Error('[prisma-guarddog] hasGrant: action name must be a non-empty string.')
     }

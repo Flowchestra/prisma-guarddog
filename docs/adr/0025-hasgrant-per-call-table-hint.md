@@ -29,7 +29,7 @@ The hint carries through as `tableHint` on the `hasGrant` AST node and is consum
 
 They coincide in the no-hint path (the key *is* the scope column); they diverge when a hint routes a `col('id')` check to a table registered under `workspaceId` — `workspace_grants."workspaceId" = workspaces.id`.
 
-The hint is a plain `string`, validated at compile time. **Type-safe autocomplete on the key (alpha.5):** threading the declared `tables` keys as a generic through `Guarddog` → `PredicateBuilder` is a DSL-wide change (7 builder classes + a second generic on `ResourceGrantsDefinition`), so it's decoupled into a follow-up. Compile-time *safety* (throw on unknown key) ships now; *autocomplete* lands separately so the generics refactor can be reviewed without a behavior change in the diff.
+The hint shipped in alpha.4 as a runtime-validated `string` (unknown key throws at compile time). **Type-safe autocomplete landed in alpha.5** (#12): a `TGrantTableKeys` generic, inferred from the `tables` map keys, threads from `defineResourceGrants` → `Guarddog` → `PredicateBuilder` and the builder hierarchy, so `opts.table` autocompletes and a typo'd key is a type error. The generic defaults to `string`, so claims-source schemas and schemas without a table source stay unconstrained — fully backward compatible. The runtime (alpha.4) and the type ergonomics (alpha.5) were deliberately decoupled so the DSL-wide generics thread could be reviewed without a behavior change muddying the diff; `@ts-expect-error` type-level tests pin the narrowing.
 
 ## Consequences
 
