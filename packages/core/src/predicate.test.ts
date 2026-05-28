@@ -122,6 +122,23 @@ describe('PredicateBuilder.hasGrant (layer 3)', () => {
   it('rejects non-column scope argument', () => {
     expect(() => p.hasGrant('edit', p.literal(true))).toThrow(/scopeColumn must be a column reference/)
   })
+
+  it('carries an opts.table hint into the AST as tableHint', () => {
+    expect(p.hasGrant('edit', col('id'), { table: 'workspaceId' }).ast).toEqual({
+      kind: 'hasGrant',
+      action: 'edit',
+      scopeColumn: 'id',
+      tableHint: 'workspaceId',
+    })
+  })
+
+  it('omits tableHint when opts is not provided', () => {
+    expect(p.hasGrant('edit', col('workspaceId')).ast).not.toHaveProperty('tableHint')
+  })
+
+  it('rejects an empty opts.table', () => {
+    expect(() => p.hasGrant('edit', col('id'), { table: '' })).toThrow(/opts.table must be a non-empty string/)
+  })
 })
 
 describe('PredicateBuilder.hasResourcePermission (per-resource jsonb)', () => {

@@ -187,15 +187,32 @@ export class PredicateBuilder<TClaims = Record<string, unknown>> {
    * claim path (default `grants`). The action vocabulary type-checks against
    * the declared `defineResourceGrants({ actions: [...] })` set when the
    * Guarddog generic is constrained.
+   *
+   * `opts.table` (table source only) names the `tables`-map key to route to,
+   * disambiguating two policies that check the same scope column against
+   * different grant tables — e.g. own-row `col('id')` on Workspace vs
+   * Workbench. Omit it to route by scope-column name as usual. Ignored for
+   * the claims source. See ADR-0025. (alpha.5 will add autocomplete on the
+   * key; today it's a validated string — an unknown key throws at compile.)
    */
-  hasGrant(action: string, scopeColumn: FluentExpr): FluentExpr {
+  hasGrant(action: string, scopeColumn: FluentExpr, opts?: { readonly table?: string }): FluentExpr {
     if (action.length === 0) {
       throw new Error('[prisma-guarddog] hasGrant: action name must be a non-empty string.')
     }
     if (scopeColumn.ast.kind !== 'col') {
       throw new Error('[prisma-guarddog] hasGrant: scopeColumn must be a column reference (use col("name")).')
     }
-    return new FluentExpr(Object.freeze({ kind: 'hasGrant', action, scopeColumn: scopeColumn.ast.column }) as Expr)
+    if (opts?.table !== undefined && opts.table.length === 0) {
+      throw new Error('[prisma-guarddog] hasGrant: opts.table must be a non-empty string when provided.')
+    }
+    return new FluentExpr(
+      Object.freeze({
+        kind: 'hasGrant',
+        action,
+        scopeColumn: scopeColumn.ast.column,
+        ...(opts?.table !== undefined && { tableHint: opts.table }),
+      }) as Expr
+    )
   }
 
   /**

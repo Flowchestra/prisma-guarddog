@@ -112,7 +112,7 @@ export function compileExpr(expr: Expr, ctx: ExprCompileCtx): string {
         return ctx.compileHasGrant(expr.action, scopeColumnRef, ctx)
       }
       if (ctx.resourceGrants?.source === 'table') {
-        return defaultCompileHasGrantTable(expr.action, expr.scopeColumn, scopeColumnRef, ctx)
+        return defaultCompileHasGrantTable(expr.action, expr.scopeColumn, scopeColumnRef, ctx, expr.tableHint)
       }
       return defaultCompileHasGrant(expr.action, scopeColumnRef, ctx)
     }
@@ -240,7 +240,8 @@ export function defaultCompileHasGrantTable(
   action: string,
   scopeColumnName: string,
   _scopeColumnRef: string,
-  ctx: ExprCompileCtx
+  ctx: ExprCompileCtx,
+  tableHint?: string
 ): string {
   if (ctx.resourceGrants?.source !== 'table') {
     throw new Error(
@@ -251,10 +252,28 @@ export function defaultCompileHasGrantTable(
   const accessorLit = quoteString(ctx.claims.accessor)
   const principalRef = `(current_setting(${accessorLit}, true)::jsonb ->> ${quoteString(ctx.resourceGrants.principalClaim)})::uuid`
 
-  // Per-resource override wins.
+  // Explicit per-call table hint (ADR-0025): route to that `tables` entry
+  // regardless of the scope column. The resourceId default comes from the
+  // registration key (the hint); the outer ref still uses the actual scope
+  // column from the call. Lets two policies check `col('id')` against
+  // different grant tables.
+  if (tableHint !== undefined) {
+    const hinted = ctx.resourceGrants.tables[tableHint]
+    if (hinted === undefined) {
+      const keys = Object.keys(ctx.resourceGrants.tables)
+      throw new Error(
+        `[prisma-guarddog/emitter-postgres-rls] hasGrant("${action}", col("${scopeColumnName}"), { table: "${tableHint}" }): ` +
+          `no tables["${tableHint}"] entry. Declared keys: [${keys.join(', ')}]. ` +
+          'The hint must be a key in defineResourceGrants({ tables }); it does not route to fallbackTable.'
+      )
+    }
+    return emitGrantExists(hinted, action, scopeColumnName, tableHint, ctx.table, principalRef, undefined)
+  }
+
+  // Per-resource override wins (registration key === scope column).
   const perResource = ctx.resourceGrants.tables[scopeColumnName]
   if (perResource !== undefined) {
-    return emitGrantExists(perResource, action, scopeColumnName, ctx.table, principalRef, undefined)
+    return emitGrantExists(perResource, action, scopeColumnName, scopeColumnName, ctx.table, principalRef, undefined)
   }
 
   // Polymorphic fallback.
@@ -262,7 +281,7 @@ export function defaultCompileHasGrantTable(
   if (fallback === undefined) {
     throw new Error(
       `[prisma-guarddog/emitter-postgres-rls] hasGrant("${action}", col("${scopeColumnName}")): no per-resource entry in tables{} and no fallbackTable configured. ` +
-        `Add a tables["${scopeColumnName}"] entry or declare a fallbackTable in defineResourceGrants.`
+        `Add a tables["${scopeColumnName}"] entry, pass { table } to route explicitly, or declare a fallbackTable in defineResourceGrants.`
     )
   }
   const resourceTypeLabel = fallback.scopeColumnTypeMap[scopeColumnName]
@@ -272,7 +291,7 @@ export function defaultCompileHasGrantTable(
         `Add scopeColumnTypeMap["${scopeColumnName}"] = "<ResourceTypeLabel>" or add a tables["${scopeColumnName}"] entry.`
     )
   }
-  return emitGrantExists(fallback, action, scopeColumnName, ctx.table, principalRef, resourceTypeLabel)
+  return emitGrantExists(fallback, action, scopeColumnName, scopeColumnName, ctx.table, principalRef, resourceTypeLabel)
 }
 
 /**
@@ -280,31 +299,38 @@ export function defaultCompileHasGrantTable(
  * `resourceTypeLabel` parameter is undefined for per-resource (no
  * discriminator equality) and a literal string for polymorphic.
  *
- * Column qualification is critical here: the grant table and the outer
- * policy's table commonly share a column name (`workspaceId` on both
- * `workspace_grant` and the policy's owning table). Without explicit
- * qualification, an unquoted `workspaceId = workspaceId` inside the EXISTS
- * subquery binds BOTH sides to the inner table, degenerating to "any
- * grant row exists for the user" and losing the outer-row correlation.
- * We fully qualify both sides — grant-table columns with the grant table
- * name; the outer scope reference with the policy's `ctx.table`.
+ * `registrationKey` is the `tables`-map key the entry is registered under
+ * (used only as the default for `resourceIdColumn`). `outerScopeColumnName`
+ * is the column from the `hasGrant` call (the outer-row side). These differ
+ * only when a per-call table hint routes a `col('id')` check to a table
+ * registered under a different key — then the resourceId default comes from
+ * the key but the correlation column is the call's `col('id')`.
+ *
+ * Column qualification is critical: the grant table and the outer policy's
+ * table commonly share a column name. Without explicit qualification, an
+ * unquoted `workspaceId = workspaceId` inside the EXISTS subquery binds BOTH
+ * sides to the inner table, degenerating to "any grant row exists for the
+ * user" and losing the outer-row correlation. We fully qualify both sides —
+ * grant-table columns with the grant table name; the outer scope reference
+ * with the policy's `ctx.table`.
  */
 function emitGrantExists(
   table: PerResourceGrantTable | PolymorphicGrantTable,
   action: string,
   outerScopeColumnName: string,
+  registrationKey: string,
   outerTableName: string,
   principalRef: string,
   resourceTypeLabel: string | undefined
 ): string {
   const tableIdent = quoteIdent(table.name)
 
-  // Per-resource: resourceIdColumn defaults to the scope column's natural
-  // name (the map key). Polymorphic: it's always explicit on the type.
+  // Per-resource: resourceIdColumn defaults to the registration key (the
+  // tables-map key). Polymorphic: it's always explicit on the type.
   const resourceIdColName =
     (table as PolymorphicGrantTable).resourceIdColumn ??
     (table as PerResourceGrantTable).resourceIdColumn ??
-    outerScopeColumnName
+    registrationKey
   const resourceIdCol = `${tableIdent}.${quoteIdent(resourceIdColName)}`
 
   // Outer-scope ref MUST be qualified with the policy's table to avoid

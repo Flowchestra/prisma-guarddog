@@ -72,6 +72,7 @@ Scope is **locked**. The exit criteria below are deliberately narrow; do not pro
 - **Supabase-specific importer** — pulls policies via Supabase REST/dashboard rather than direct `pg_policies` (`@flowchestra/prisma-guarddog-importer-supabase`)
 - ~~**Table-backed `resourceGrants` source**~~ — **shipped in `0.1.0-alpha.2`** via `defineResourceGrants({ source: 'table', tables: {...}, fallbackTable: {...} })`. Supports per-resource grant tables + polymorphic fallback. See [ADR-0021](./adr/0021-table-backed-resource-grants.md).
 - ~~**Rank-based + group-disjunctive grant tables**~~ — **shipped in `0.1.0-alpha.3`** (pulled forward from a would-be Phase 2.5 after the Flowchestra pilot, issues #5/#6): `roleColumn` + `roleHierarchy` rank semantics ([ADR-0022](./adr/0022-rank-based-grant-tables.md)) and `principalUserColumn`/`principalGroupColumn`/`groupMemberTable` user-OR-group resolution ([ADR-0023](./adr/0023-grant-principal-disjunction.md)). Plus CLI-threaded render overrides ([ADR-0024](./adr/0024-config-threaded-render-overrides.md)).
+- ~~**`hasGrant` per-call table hint**~~ — **shipped in `0.1.0-alpha.4`** (issue #11, [ADR-0025](./adr/0025-hasgrant-per-call-table-hint.md)): `p.hasGrant(action, col('id'), { table })` for own-row grant checks across multiple resources. **Follow-up (alpha.5):** type-safe autocomplete on the hint key — a DSL-wide generics thread, decoupled from the runtime so it ships reviewed in isolation.
 
 ### Phase 3 — Identity provider integration
 

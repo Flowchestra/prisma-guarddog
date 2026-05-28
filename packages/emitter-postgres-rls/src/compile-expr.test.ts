@@ -465,6 +465,58 @@ describe('compileExpr — hasGrant with source: "table"', () => {
     )
   })
 
+  // Per-call table hint (issue #11 / ADR-0025). baseCtx table is 'workbench'.
+  const hasGrantHinted = (action: string, scopeColumn: string, table: string): Expr =>
+    Object.freeze({ kind: 'hasGrant', action, scopeColumn, tableHint: table }) as Expr
+
+  it('table hint routes col("id") to the hinted entry, not the scope-column key', () => {
+    // Two grant tables registered under workspaceId / workbenchId. A policy
+    // checking the resource's OWN id ('id') routes via the hint.
+    const rg = defineResourceGrants({
+      source: 'table',
+      actions: ['READER'] as const,
+      tables: {
+        workspaceId: { name: 'workspace_grants', principalColumn: 'user_id', actionsColumn: 'actions' },
+        workbenchId: { name: 'workbench_grants', principalColumn: 'user_id', actionsColumn: 'actions' },
+      },
+    })
+    const ctx = baseCtx({ table: 'workspaces', resourceGrants: rg })
+    // hasGrant('READER', col('id'), { table: 'workspaceId' }) — resourceId
+    // default comes from the registration key (workspaceId); outer ref is
+    // the call's own 'id' qualified with the policy table (workspaces).
+    expect(compileExpr(hasGrantHinted('READER', 'id', 'workspaceId'), ctx)).toBe(
+      `EXISTS (SELECT 1 FROM workspace_grants WHERE workspace_grants.user_id = (current_setting('request.jwt.claims', true)::jsonb ->> 'sub')::uuid AND workspace_grants."workspaceId" = workspaces.id AND 'READER' = ANY(workspace_grants.actions))`
+    )
+  })
+
+  it('two policies both checking col("id") route to different tables via hints', () => {
+    const rg = defineResourceGrants({
+      source: 'table',
+      actions: ['READER'] as const,
+      tables: {
+        workspaceId: { name: 'workspace_grants', principalColumn: 'user_id', actionsColumn: 'actions' },
+        workbenchId: { name: 'workbench_grants', principalColumn: 'user_id', actionsColumn: 'actions' },
+      },
+    })
+    const wsCtx = baseCtx({ table: 'workspaces', resourceGrants: rg })
+    const wbCtx = baseCtx({ table: 'workbenches', resourceGrants: rg })
+    expect(compileExpr(hasGrantHinted('READER', 'id', 'workspaceId'), wsCtx)).toContain('FROM workspace_grants')
+    expect(compileExpr(hasGrantHinted('READER', 'id', 'workbenchId'), wbCtx)).toContain('FROM workbench_grants')
+  })
+
+  it('unknown table hint throws with the declared keys', () => {
+    const ctx = baseCtx({
+      resourceGrants: defineResourceGrants({
+        source: 'table',
+        actions: ['READER'] as const,
+        tables: { workspaceId: { name: 'workspace_grants', principalColumn: 'user_id', actionsColumn: 'actions' } },
+      }),
+    })
+    expect(() => compileExpr(hasGrantHinted('READER', 'id', 'nope'), ctx)).toThrow(
+      /no tables\["nope"\] entry\. Declared keys: \[workspaceId\]/
+    )
+  })
+
   it('rank + disjunction compose in one table config', () => {
     const ctx = baseCtx({
       resourceGrants: defineResourceGrants({

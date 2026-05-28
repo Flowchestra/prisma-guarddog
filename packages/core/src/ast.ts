@@ -42,7 +42,19 @@ export type Expr =
    * Layer 3 (resourceGrants): "does the requesting user have `<action>` on
    * the resource identified by `<scopeColumn>`?"
    */
-  | { readonly kind: 'hasGrant'; readonly action: string; readonly scopeColumn: string }
+  | {
+      readonly kind: 'hasGrant'
+      readonly action: string
+      readonly scopeColumn: string
+      /**
+       * Optional `tables`-map key disambiguating which grant table to route
+       * to, for `source: 'table'`. Needed when two policies check the same
+       * scope column (e.g. own-row `col('id')`) against different grant
+       * tables — global column-name keying can't express that. Ignored for
+       * the claims source. See ADR-0025.
+       */
+      readonly tableHint?: string
+    }
   /**
    * Per-resource jsonb permissions: "does the requesting user (or their
    * groups) have `<action>` in the `permissions` jsonb stored on this row?"
