@@ -13,5 +13,12 @@
     "@flowchestra/prisma-guarddog-preset": "0.0.0",
     "@flowchestra/prisma-guarddog-testing-postgres": "0.0.0"
   },
-  "changesets": ["cli-emit-diff-import-and-lint-flag", "feat-rank-group-grants-and-cli-overrides", "feat-table-backed-resource-grants", "fix-exports-default-and-importer-roles", "initial-alpha"]
+  "changesets": [
+    "cli-emit-diff-import-and-lint-flag",
+    "feat-hasgrant-table-hint",
+    "feat-rank-group-grants-and-cli-overrides",
+    "feat-table-backed-resource-grants",
+    "fix-exports-default-and-importer-roles",
+    "initial-alpha"
+  ]
 }
