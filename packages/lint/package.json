@@ -1,6 +1,6 @@
 {
   "name": "@flowchestra/prisma-guarddog-lint",
-  "version": "0.1.0-alpha.7",
+  "version": "0.1.0-alpha.8",
   "description": "Coverage lint for prisma-guarddog: every Prisma model must have policy(), noPolicy(), or importedRawPolicy()",
   "license": "MIT",
   "repository": {

@@ -14,6 +14,7 @@
     "@flowchestra/prisma-guarddog-testing-postgres": "0.0.0"
   },
   "changesets": [
+    "chore-lockstep-version-alignment",
     "cli-emit-diff-import-and-lint-flag",
     "feat-column-privilege-unenforced-lint",
     "feat-hasgrant-table-hint-autocomplete",
