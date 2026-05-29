@@ -1,6 +1,6 @@
 {
   "name": "@flowchestra/prisma-guarddog-core",
-  "version": "0.1.0-alpha.12",
+  "version": "0.1.0-alpha.13",
   "description": "Core API for prisma-guarddog: defineClaims, defineDbRoles, defineAppRoles, resources, Guarddog constructor, and policy builders",
   "license": "MIT",
   "repository": {

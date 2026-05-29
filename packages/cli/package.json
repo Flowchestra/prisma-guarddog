@@ -1,6 +1,6 @@
 {
   "name": "@flowchestra/prisma-guarddog",
-  "version": "0.1.0-alpha.12",
+  "version": "0.1.0-alpha.13",
   "description": "CLI for prisma-guarddog: emit, diff, migrate, import",
   "license": "MIT",
   "repository": {
