@@ -17,6 +17,7 @@
     "cli-emit-diff-import-and-lint-flag",
     "feat-hasgrant-table-hint-autocomplete",
     "feat-hasgrant-table-hint",
+    "feat-managed-sql-functions",
     "feat-rank-group-grants-and-cli-overrides",
     "feat-table-backed-resource-grants",
     "fix-exports-default-and-importer-roles",
