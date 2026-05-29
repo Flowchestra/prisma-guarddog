@@ -41,6 +41,11 @@ import { Guarddog } from './guarddog.js'
 import type { ResourceGrantsDefinition } from './resource-grants.js'
 import type { ResourceTreeDefinition } from './resources.js'
 
+/** Map the generated `ModelColumns` const (model -> column tuple) to the model -> column-union form. */
+export type ColumnUnionMap<T extends Record<string, readonly string[]>> = {
+  readonly [K in keyof T]: T[K][number]
+}
+
 /**
  * The declarative schema value the user `export default`s from
  * `prisma/guarddog.ts`. All five primitives plus a policies callback that
@@ -54,6 +59,7 @@ export interface SchemaDefinition<
   TActions extends string = string,
   TGrantTableKeys extends string = string,
   TFunctions extends Record<string, FunctionDefinition> = Record<string, FunctionDefinition>,
+  TModels extends Record<string, string> = Record<string, string>,
 > {
   readonly claims: ClaimsDefinition<TClaimsShape>
   readonly dbRoles: DbRolesDefinition<TDbRoles>
@@ -68,18 +74,26 @@ export interface SchemaDefinition<
    */
   readonly functions?: FunctionsDefinition<TFunctions>
   /**
+   * Optional model -> SQL columns map — pass the generated `ModelColumns`
+   * const. Wires typed `guard.model(...)` + `p.col(...)` (ADR-0028); the
+   * column union is inferred from the const, so no explicit generic is
+   * needed. Omit it and `model()` / `p.col()` stay unconstrained (`string`).
+   */
+  readonly models?: Record<string, readonly string[]>
+  /**
    * Policy authoring callback. Receives a Guarddog instance with the four
-   * primitives + resourceGrants + functions already wired. The callback
-   * registers policies via `guard.model(...).policy(...)`,
+   * primitives + resourceGrants + functions + models already wired. The
+   * callback registers policies via `guard.model(...).policy(...)`,
    * `guard.polymorphic(...)`, `guard.noPolicy(...)`, etc. The grant-table key
    * union flows here so `p.hasGrant(..., { table })` autocompletes (ADR-0025 /
-   * #12); the function-name union flows for `p.fn(...)` (ADR-0026 / #15).
+   * #12); the function-name union flows for `p.fn(...)` (ADR-0026 / #15); the
+   * model + column unions flow for `model(...)` / `p.col(...)` (ADR-0028).
    *
    * Called exactly once per `materializeSchema` invocation. Should be
    * referentially transparent — no side effects, no I/O.
    */
   readonly policies: (
-    guard: Guarddog<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions, TGrantTableKeys, TFunctions>
+    guard: Guarddog<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions, TGrantTableKeys, TFunctions, TModels>
   ) => void
 }
 
@@ -100,10 +114,45 @@ export function defineSchema<
   TActions extends string = string,
   TGrantTableKeys extends string = string,
   TFunctions extends Record<string, FunctionDefinition> = Record<string, FunctionDefinition>,
+  TModelColumns extends Record<string, readonly string[]> = Record<string, readonly string[]>,
 >(
-  schema: SchemaDefinition<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions, TGrantTableKeys, TFunctions>
-): SchemaDefinition<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions, TGrantTableKeys, TFunctions> {
-  return Object.freeze({ ...schema })
+  // `TModelColumns` is inferred from the `models` const (the generated
+  // `ModelColumns`); it maps to the model -> column-union form the rest of
+  // the API consumes (ADR-0028). The `Omit` + intersection carries the
+  // precise const type into inference without widening it.
+  schema: Omit<
+    SchemaDefinition<
+      TClaimsShape,
+      TDbRoles,
+      TAppRoles,
+      TResources,
+      TActions,
+      TGrantTableKeys,
+      TFunctions,
+      ColumnUnionMap<TModelColumns>
+    >,
+    'models'
+  > & { readonly models?: TModelColumns }
+): SchemaDefinition<
+  TClaimsShape,
+  TDbRoles,
+  TAppRoles,
+  TResources,
+  TActions,
+  TGrantTableKeys,
+  TFunctions,
+  ColumnUnionMap<TModelColumns>
+> {
+  return Object.freeze({ ...schema }) as SchemaDefinition<
+    TClaimsShape,
+    TDbRoles,
+    TAppRoles,
+    TResources,
+    TActions,
+    TGrantTableKeys,
+    TFunctions,
+    ColumnUnionMap<TModelColumns>
+  >
 }
 
 /**
@@ -123,10 +172,29 @@ export function materializeSchema<
   TActions extends string,
   TGrantTableKeys extends string = string,
   TFunctions extends Record<string, FunctionDefinition> = Record<string, FunctionDefinition>,
+  TModels extends Record<string, string> = Record<string, string>,
 >(
-  schema: SchemaDefinition<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions, TGrantTableKeys, TFunctions>
-): Guarddog<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions, TGrantTableKeys, TFunctions> {
-  const guard = new Guarddog<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions, TGrantTableKeys, TFunctions>({
+  schema: SchemaDefinition<
+    TClaimsShape,
+    TDbRoles,
+    TAppRoles,
+    TResources,
+    TActions,
+    TGrantTableKeys,
+    TFunctions,
+    TModels
+  >
+): Guarddog<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions, TGrantTableKeys, TFunctions, TModels> {
+  const guard = new Guarddog<
+    TClaimsShape,
+    TDbRoles,
+    TAppRoles,
+    TResources,
+    TActions,
+    TGrantTableKeys,
+    TFunctions,
+    TModels
+  >({
     claims: schema.claims,
     dbRoles: schema.dbRoles,
     appRoles: schema.appRoles,

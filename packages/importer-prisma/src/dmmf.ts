@@ -23,6 +23,14 @@ export interface PrismaModel {
    * `@flowchestra/prisma-guarddog-emitter-postgres-rls`'s `defaultTableResolver`.
    */
   readonly tableName: string
+  /**
+   * The model's SQL column names — non-relation fields, each resolved to its
+   * DB column (`@map` `dbName` when present, else the field name). Relation
+   * navigation fields (DMMF `kind: 'object'`) are excluded; they have no
+   * column. Drives the typed `p.col(...)` autocomplete (ADR-0028). Sorted for
+   * deterministic codegen output.
+   */
+  readonly columns: readonly string[]
 }
 
 /**
@@ -41,6 +49,14 @@ export async function parsePrismaModels(datamodel: string): Promise<readonly Pri
         // `dbName` is the Prisma DMMF field that captures @@map() overrides.
         // Null when no @@map is set — fall back to the model name verbatim.
         tableName: m.dbName ?? m.name,
+        // Columns = non-relation fields, resolved to their DB column name
+        // (`@map` dbName when present). Relation nav fields are kind 'object'.
+        columns: Object.freeze(
+          m.fields
+            .filter((f) => f.kind !== 'object')
+            .map((f) => f.dbName ?? f.name)
+            .toSorted()
+        ),
       })
     )
   )

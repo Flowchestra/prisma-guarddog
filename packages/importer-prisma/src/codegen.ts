@@ -18,11 +18,22 @@
  *       ...
  *     } as const
  *
+ *     export const ModelColumns = {
+ *       Workbench: ['id', 'ownerId', 'workspaceId'],
+ *       Workspace: ['id', 'name', 'tenantId'],
+ *       ...
+ *     } as const
+ *
+ *     export type GuarddogModels = { readonly [K in keyof typeof ModelColumns]: (typeof ModelColumns)[K][number] }
+ *
  * Consumers then write `guard.model(Models.Workbench)` and get autocomplete
  * + type-checked model names that always reflect the current
  * `schema.prisma`. ModelTables is bridge data for the emitter's
  * table-name resolver when consumers want to feed it from DMMF rather than
- * the default snake_case heuristic.
+ * the default snake_case heuristic. `ModelColumns` (model -> SQL columns,
+ * from DMMF `dbName`) is passed to `defineSchema({ models: ModelColumns })`
+ * to power typed `model()` + `p.col(...)` (ADR-0028) — inferred, no explicit
+ * generic.
  *
  * Pure code generation — no filesystem. The CLI's `writeModelTypes`
  * wrapper handles the disk write.
@@ -55,6 +66,10 @@ const DEFAULT_HEADER = [
 export function generateModelTypes(models: readonly PrismaModel[], opts: CodegenOptions = {}): string {
   const header = opts.header ?? DEFAULT_HEADER
 
+  const guarddogModelsType =
+    '/** Prisma model -> its SQL column-name union (DMMF dbName). Powers typed `p.col(...)`. */\n' +
+    'export type GuarddogModels = { readonly [K in keyof typeof ModelColumns]: (typeof ModelColumns)[K][number] }'
+
   if (models.length === 0) {
     return [
       header,
@@ -64,12 +79,18 @@ export function generateModelTypes(models: readonly PrismaModel[], opts: Codegen
       '',
       'export const ModelTables = {} as const',
       '',
+      '/** Prisma model -> its SQL columns (DMMF dbName). Pass to `defineSchema({ models: ModelColumns })`. */',
+      'export const ModelColumns = {} as const',
+      '',
+      guarddogModelsType,
+      '',
     ].join('\n')
   }
 
   const sorted = [...models].toSorted((a, b) => a.name.localeCompare(b.name))
   const modelLines = sorted.map((m) => `  ${m.name}: '${m.name}',`).join('\n')
   const tableLines = sorted.map((m) => `  ${m.name}: '${m.tableName}',`).join('\n')
+  const columnLines = sorted.map((m) => `  ${m.name}: [${m.columns.map((c) => `'${c}'`).join(', ')}],`).join('\n')
 
   return [
     header,
@@ -83,6 +104,13 @@ export function generateModelTypes(models: readonly PrismaModel[], opts: Codegen
     'export const ModelTables = {',
     tableLines,
     '} as const',
+    '',
+    '/** Prisma model -> its SQL columns (DMMF dbName). Pass to `defineSchema({ models: ModelColumns })`. */',
+    'export const ModelColumns = {',
+    columnLines,
+    '} as const',
+    '',
+    guarddogModelsType,
     '',
   ].join('\n')
 }

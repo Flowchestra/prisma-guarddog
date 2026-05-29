@@ -63,6 +63,27 @@ prisma migrate deploy
 
 The migration is fully self-contained — no helper functions, no `app.*` schema, no consumer-side SQL between the schema file and a working database.
 
+### Typed model + column references (optional)
+
+Pass the generated `ModelColumns` const and `guard.model(...)` + `p.col(...)` autocomplete and type-check against your Prisma schema (sourced from DMMF, post-`@map`) — a typo'd column is a compile error, not an apply-time Postgres error ([ADR-0028](./docs/adr/0028-typed-model-and-column-references.md)):
+
+```ts
+import { ModelColumns } from './generated/guarddog-models' // emitted by the guarddog Prisma generator
+
+export default defineSchema({
+  models: ModelColumns, // ← inferred; no explicit generic
+  // ...claims/dbRoles/etc.
+  policies(guard) {
+    guard
+      .model('Workspace') // ← model names autocomplete; typo = type error
+      .policy('app_user')
+      .select((p) => p.col('tenantId').eq(p.claim('tenantId'))) // ← p.col autocompletes Workspace's columns
+  },
+})
+```
+
+`p.col` is the typed, model-scoped form; the standalone `col(...)` stays as the untyped escape hatch for dynamic/raw column names. Omit `models` and both stay unconstrained (`string`) — fully backward compatible.
+
 ## Quickstart
 
 Packages publish to **GitHub Packages** under the `@flowchestra` scope. Two `.npmrc` lines are required — typically in your repo or `~/.npmrc`:

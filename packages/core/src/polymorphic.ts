@@ -51,7 +51,8 @@ type PredicateFn<
   TClaims,
   TGrantTableKeys extends string = string,
   TFunctions extends Record<string, FunctionDefinition> = Record<string, FunctionDefinition>,
-> = (p: PredicateBuilder<TClaims, TGrantTableKeys, TFunctions>) => FluentExpr
+  TColumns extends string = string,
+> = (p: PredicateBuilder<TClaims, TGrantTableKeys, TFunctions, TColumns>) => FluentExpr
 
 /**
  * Internal protocol: the polymorphic builder hierarchy calls back into the
@@ -63,7 +64,12 @@ export interface PolymorphicHost<
   TGrantTableKeys extends string = string,
   TFunctions extends Record<string, FunctionDefinition> = Record<string, FunctionDefinition>,
 > {
-  _buildPredicate(): PredicateBuilder<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys, TFunctions>
+  _buildPredicate<TCols extends string = string>(): PredicateBuilder<
+    InferClaims<ClaimsDefinition<TClaimsShape>>,
+    TGrantTableKeys,
+    TFunctions,
+    TCols
+  >
 }
 
 export class PolymorphicBuilder<
@@ -71,6 +77,7 @@ export class PolymorphicBuilder<
   TDbRoles extends string,
   TGrantTableKeys extends string = string,
   TFunctions extends Record<string, FunctionDefinition> = Record<string, FunctionDefinition>,
+  TModels extends Record<string, string> = Record<string, string>,
 > {
   private _table: string | undefined
   private readonly _targets = new Map<
@@ -104,10 +111,10 @@ export class PolymorphicBuilder<
    * so split authoring is safe; the `model` option is enforced consistent on
    * re-fetch (mismatched targetModelName is a fail-fast bug).
    */
-  target(
+  target<M extends keyof TModels & string>(
     discriminatorValue: string,
-    opts: { model: string }
-  ): PolymorphicTargetBuilder<TClaimsShape, TDbRoles, TGrantTableKeys, TFunctions> {
+    opts: { model: M }
+  ): PolymorphicTargetBuilder<TClaimsShape, TDbRoles, TGrantTableKeys, TFunctions, TModels[M]> {
     if (discriminatorValue.length === 0) {
       throw new Error(
         `[prisma-guarddog] PolymorphicBuilder("${this.modelName}").target(): discriminatorValue must be a non-empty string.`
@@ -127,14 +134,25 @@ export class PolymorphicBuilder<
             'Use a consistent target model across all calls.'
         )
       }
-      return existing
+      // Column union rides on the return type only (the registry is keyed
+      // loosely); runtime is identical (ADR-0028).
+      return existing as unknown as PolymorphicTargetBuilder<
+        TClaimsShape,
+        TDbRoles,
+        TGrantTableKeys,
+        TFunctions,
+        TModels[M]
+      >
     }
-    const builder = new PolymorphicTargetBuilder<TClaimsShape, TDbRoles, TGrantTableKeys, TFunctions>(
+    const builder = new PolymorphicTargetBuilder<TClaimsShape, TDbRoles, TGrantTableKeys, TFunctions, TModels[M]>(
       this._host,
       discriminatorValue,
       opts.model
     )
-    this._targets.set(discriminatorValue, builder)
+    this._targets.set(
+      discriminatorValue,
+      builder as unknown as PolymorphicTargetBuilder<TClaimsShape, TDbRoles, TGrantTableKeys, TFunctions>
+    )
     return builder
   }
 
@@ -154,6 +172,7 @@ export class PolymorphicTargetBuilder<
   TDbRoles extends string,
   TGrantTableKeys extends string = string,
   TFunctions extends Record<string, FunctionDefinition> = Record<string, FunctionDefinition>,
+  TColumns extends string = string,
 > {
   private readonly _policies = new Map<
     string,
@@ -170,7 +189,9 @@ export class PolymorphicTargetBuilder<
    * Begin authoring a policy for this target + dbRole. Idempotent — repeated
    * calls with the same dbRole return the same builder.
    */
-  policy(dbRole: TDbRoles): PolymorphicTargetPolicyBuilder<TClaimsShape, TDbRoles, TGrantTableKeys, TFunctions> {
+  policy(
+    dbRole: TDbRoles
+  ): PolymorphicTargetPolicyBuilder<TClaimsShape, TDbRoles, TGrantTableKeys, TFunctions, TColumns> {
     if ((dbRole as string).length === 0) {
       throw new Error(
         `[prisma-guarddog] PolymorphicTargetBuilder("${this.discriminatorValue}").policy(): dbRole must be a non-empty string.`
@@ -178,13 +199,20 @@ export class PolymorphicTargetBuilder<
     }
     let builder = this._policies.get(dbRole as string)
     if (builder === undefined) {
-      builder = new PolymorphicTargetPolicyBuilder<TClaimsShape, TDbRoles, TGrantTableKeys, TFunctions>(
+      builder = new PolymorphicTargetPolicyBuilder<TClaimsShape, TDbRoles, TGrantTableKeys, TFunctions, TColumns>(
         this._host,
         dbRole
       )
       this._policies.set(dbRole as string, builder)
     }
-    return builder
+    // Column union rides on the return type only; runtime identical (ADR-0028).
+    return builder as unknown as PolymorphicTargetPolicyBuilder<
+      TClaimsShape,
+      TDbRoles,
+      TGrantTableKeys,
+      TFunctions,
+      TColumns
+    >
   }
 
   /** @internal — emit the immutable AST for this target. */
@@ -202,6 +230,7 @@ export class PolymorphicTargetPolicyBuilder<
   TDbRoles extends string,
   TGrantTableKeys extends string = string,
   TFunctions extends Record<string, FunctionDefinition> = Record<string, FunctionDefinition>,
+  TColumns extends string = string,
 > {
   private _select: SelectSpec | undefined
   private _insert: InsertSpec | undefined
@@ -218,15 +247,17 @@ export class PolymorphicTargetPolicyBuilder<
    * Define the `USING` predicate for SELECT. The emitter prepends
    * `<discriminator> = '<value>'` automatically; do not restate it.
    */
-  select(fn: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys, TFunctions>): this {
-    this._select = Object.freeze({ using: freezeExprDeep(fn(this._host._buildPredicate()).ast) })
+  select(fn: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys, TFunctions, TColumns>): this {
+    this._select = Object.freeze({ using: freezeExprDeep(fn(this._host._buildPredicate<TColumns>()).ast) })
     return this
   }
 
   /** Define the `WITH CHECK` predicate for INSERT. ADR-0005. */
-  insert(spec: { check: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys, TFunctions> }): this {
+  insert(spec: {
+    check: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys, TFunctions, TColumns>
+  }): this {
     this._insert = Object.freeze({
-      check: freezeExprDeep(spec.check(this._host._buildPredicate()).ast),
+      check: freezeExprDeep(spec.check(this._host._buildPredicate<TColumns>()).ast),
     })
     return this
   }
@@ -236,10 +267,10 @@ export class PolymorphicTargetPolicyBuilder<
    * for UPDATE. Both are mandatory. ADR-0005.
    */
   update(spec: {
-    using: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys, TFunctions>
-    check: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys, TFunctions>
+    using: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys, TFunctions, TColumns>
+    check: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys, TFunctions, TColumns>
   }): this {
-    const p = this._host._buildPredicate()
+    const p = this._host._buildPredicate<TColumns>()
     this._update = Object.freeze({
       using: freezeExprDeep(spec.using(p).ast),
       check: freezeExprDeep(spec.check(p).ast),
@@ -248,9 +279,11 @@ export class PolymorphicTargetPolicyBuilder<
   }
 
   /** Define the `USING` predicate for DELETE. */
-  delete(spec: { using: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys, TFunctions> }): this {
+  delete(spec: {
+    using: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys, TFunctions, TColumns>
+  }): this {
     this._delete = Object.freeze({
-      using: freezeExprDeep(spec.using(this._host._buildPredicate()).ast),
+      using: freezeExprDeep(spec.using(this._host._buildPredicate<TColumns>()).ast),
     })
     return this
   }

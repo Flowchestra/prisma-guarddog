@@ -45,7 +45,7 @@ export type {
 } from './function-defs.js'
 
 export { defineSchema, materializeSchema } from './schema.js'
-export type { SchemaDefinition } from './schema.js'
+export type { ColumnUnionMap, SchemaDefinition } from './schema.js'
 
 export { Guarddog, ModelBuilder, PolicyBuilder } from './guarddog.js'
 export type { GuarddogConfig } from './guarddog.js'

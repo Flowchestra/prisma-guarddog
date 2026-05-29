@@ -1,7 +1,7 @@
 # 0028 — Typed model + column references (`model()` / `p.col()` autocomplete)
 
-**Status:** Accepted (design; implementation pending)
-**Date:** 2026-05-28
+**Status:** Accepted (implemented)
+**Date:** 2026-05-29
 
 ## Context
 
@@ -23,28 +23,31 @@ So we reuse Prisma's work via **DMMF** (the right source for SQL-level names), n
 
 Thread a model→columns type map through the builder chain so `model()` and a new model-scoped `p.col()` autocomplete and type-check, sourced from DMMF `dbName`. Defaults keep everything backward compatible.
 
-**1. Codegen — emit a column map.** Extend `generateModelTypes` to also emit, alongside `Models`/`ModelName`/`ModelTables`:
+**1. Codegen — emit a column map (as a value, for inference).** Extend `generateModelTypes` to also emit, alongside `Models`/`ModelName`/`ModelTables`, a `ModelColumns` **const** plus a derived `GuarddogModels` type:
 
 ```ts
-/** Prisma model -> its SQL column names (DMMF dbName; relations excluded). */
-export interface GuarddogModels {
-  Workspace: 'id' | 'tenantId' | 'name'
-  Workbench: 'id' | 'workspaceId' | 'ownerId'
-  // ...
-}
+/** Prisma model -> its SQL columns (DMMF dbName). Pass to `defineSchema({ models: ModelColumns })`. */
+export const ModelColumns = {
+  Workbench: ['id', 'ownerId', 'workspaceId'],
+  Workspace: ['id', 'name', 'tenantId'],
+} as const
+
+export type GuarddogModels = { readonly [K in keyof typeof ModelColumns]: (typeof ModelColumns)[K][number] }
 ```
 
-Columns are the model's non-relation fields (`field.kind !== 'object'`), each `field.dbName ?? field.name` — the actual SQL column. Deterministic (sorted) for clean diffs.
+Columns are the model's non-relation fields (`field.kind !== 'object'`), each `field.dbName ?? field.name` — the actual SQL column. Deterministic (sorted) for clean diffs. Emitting a **const** (not just a type) is what enables inference (below).
 
-**2. Generics.** Add a `TModels extends Record<string, string>` generic (model name → column-name union) to `Guarddog` / `defineSchema` / `materializeSchema`, defaulting to `Record<string, string>` (unconstrained). The consumer opts in with an explicit type argument:
+**2. Generics + inference.** Add a `TModels extends Record<string, string>` generic (model name → column-name union) to `Guarddog` / `SchemaDefinition` / `materializeSchema`, defaulting to `Record<string, string>` (unconstrained). The consumer opts in by passing the generated const to a new optional `models` field — **no explicit type argument** (guarddog has too many generics for `defineSchema<...>` to target the right slot; a value infers cleanly):
 
 ```ts
-import type { GuarddogModels } from './generated/guarddog-models'
-export default defineSchema<GuarddogModels>({ /* ... */ })
+import { ModelColumns } from './generated/guarddog-models'
+export default defineSchema({ models: ModelColumns, /* ... */ })
 ```
+
+`defineSchema` infers `TModelColumns` from the `models` const and maps it to the union form via `ColumnUnionMap<T> = { [K in keyof T]: T[K][number] }`. Then:
 
 - `model<M extends keyof TModels & string>(name: M)` — typed model names; returns a `ModelBuilder` scoped to the column union `TModels[M]`.
-- That column union threads `ModelBuilder → PolicyBuilder → PredicateBuilder` as a new `TColumns` generic (defaults `string`).
+- That column union threads `ModelBuilder → PolicyBuilder → PredicateBuilder` as a new `TColumns` generic (defaults `string`). The internal builder registries are keyed loosely (`string` columns) and the precise union rides on the fluent return types via localized `as unknown as` casts — runtime is identical.
 
 **3. `p.col()` — the typed, model-scoped column reference.** Add `col(name: TColumns): FluentExpr` to `PredicateBuilder`. Inside `select((p) => …)`, `p.col('…')` autocompletes the current model's columns and rejects typos; it returns a `FluentExpr` so it's a drop-in everywhere (`p.col('x').eq(…)`, `p.hasGrant('read', p.col('workspaceId'))`, `p.isOwner(p.col('ownerId'))`).
 
@@ -56,11 +59,11 @@ export default defineSchema<GuarddogModels>({ /* ... */ })
 
 ## Implementation plan
 
-1. **Codegen** (`importer-prisma`): extend `PrismaModel` to carry `columns: readonly string[]` (from DMMF, non-relation, `dbName ?? name`); extend `generateModelTypes` to emit the `GuarddogModels` interface; update `parsePrismaModels` + the generator. Tests: golden output incl. an `@map`'d column.
+1. **Codegen** (`importer-prisma`): extend `PrismaModel` to carry `columns: readonly string[]` (from DMMF, non-relation, `dbName ?? name`); extend `generateModelTypes` to emit the `ModelColumns` const + derived `GuarddogModels` type; update `parsePrismaModels` + the generator. Tests: golden output incl. an `@map`'d column.
 2. **Core generics**: add `TColumns` to `PredicateBuilder` + `p.col`; add `TModels` to `Guarddog`/`ModelBuilder`/`PolicyBuilder` and thread `TModels[M]` from `model()` into the policy's predicate builder (PolicyBuilder constructs `PredicateBuilder<…, TColumns>`). Mirror through `polymorphic.ts`. Add `TModels` to `defineSchema`/`materializeSchema`.
 3. **Type-level tests** (`@ts-expect-error`): `model('typo')` errors; `p.col('ghost')` errors; `p.col('tenantId')` OK; unconstrained default (`string`) still accepts any column — backward compat pinned.
 4. **Runtime**: none — `p.col` builds the same `col` AST node; purely additive types.
-5. **Docs + example**: ADR (this), README authoring snippet, and migrate the flowchestra example to `defineSchema<GuarddogModels>` + `p.col` as the reference pattern. Changeset: minor `core` + `importer-prisma`.
+5. **Docs + example**: ADR (this), README authoring snippet, and demonstrate `defineSchema({ models: ModelColumns })` + `p.col` as the reference pattern. Changeset: minor `core` + `importer-prisma`.
 
 ## Consequences
 
@@ -71,7 +74,7 @@ export default defineSchema<GuarddogModels>({ /* ... */ })
 
 **Negative**
 - Two column helpers (`col` vs `p.col`). Mitigated by a clear rule: `p.col` for typed/model-scoped, `col` for dynamic/raw. Opt-in autocomplete requires rewriting `col(...)` → `p.col(...)` in predicates.
-- Another explicit generic at the `defineSchema<GuarddogModels>(...)` call site. Standard TS, but one more thing to wire (and it depends on running codegen).
+- One more thing to wire: pass `models: ModelColumns` (and run codegen to produce it). Inferred from the const, so no explicit generic — but the typing is only as fresh as the last `prisma generate`.
 - `p.col` surfaces DB column names (post-`@map`), not Prisma field names — correct for SQL, but a consumer used to thinking in Prisma field names must map mentally. Documented.
 
 ## Alternatives considered
@@ -81,6 +84,7 @@ export default defineSchema<GuarddogModels>({ /* ... */ })
 - **`select((p, col) => …)` (typed `col` as a 2nd callback arg).** Avoids the `p.col` namespace but changes every predicate callback signature and is less consistent with `p.claim`/`p.fn`. Rejected in favor of `p.col`.
 - **Global union of all columns across all models for `col()`.** Loses per-model scoping (would accept another model's column). Rejected.
 - **Type only `model()` now, defer columns.** Cheaper, but leaves the high-value gap (columns) open. Folded into this single design instead.
+- **Explicit `defineSchema<GuarddogModels>(...)` type argument** (the original design sketch). guarddog's `defineSchema` has 7+ generics, so a single explicit arg binds to the wrong (first) slot; making `TModels` first would force defaults on all the others and reorder the signature. Rejected in favor of value-inference from the `models` const — zero explicit generics, better DX.
 
 ## References
 

@@ -135,6 +135,7 @@ export class PredicateBuilder<
   TClaims = Record<string, unknown>,
   TGrantTableKeys extends string = string,
   TFunctions extends Record<string, FunctionDefinition> = Record<string, FunctionDefinition>,
+  TColumns extends string = string,
 > {
   /**
    * Read a claim. The string key is constrained to the registered claim names.
@@ -144,6 +145,25 @@ export class PredicateBuilder<
    */
   claim<K extends keyof TClaims & string>(name: K): FluentExpr {
     return new FluentExpr(Object.freeze({ kind: 'claim', path: name }) as Expr)
+  }
+
+  /**
+   * Model-scoped column reference. `TColumns` is the current model's SQL
+   * column union (from `defineSchema<GuarddogModels>` + `guard.model(...)`,
+   * ADR-0028), so the name autocompletes and a typo is a type error:
+   *
+   *   p.col('tenantId')  // OK
+   *   p.col('ghost')     // type error
+   *
+   * Defaults to `string` (unconstrained) when no model map is wired. Produces
+   * the same AST as the standalone `col(...)`; use `col(...)` for dynamic /
+   * raw column names that can't be typed.
+   */
+  col(name: TColumns): FluentExpr {
+    if (name.length === 0) {
+      throw new Error('[prisma-guarddog] p.col(): column name must be a non-empty string.')
+    }
+    return new FluentExpr(Object.freeze({ kind: 'col', column: name }) as Expr)
   }
 
   /**

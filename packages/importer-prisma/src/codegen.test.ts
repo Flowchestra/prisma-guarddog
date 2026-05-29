@@ -3,8 +3,10 @@ import { describe, expect, it } from 'vitest'
 import { generateModelTypes } from './codegen.js'
 import type { PrismaModel } from './dmmf.js'
 
-const models = (...defs: Array<[string, string?]>): readonly PrismaModel[] =>
-  defs.map(([name, tableName]) => Object.freeze({ name, tableName: tableName ?? name }))
+const models = (...defs: Array<[string, (string | undefined)?, (string[] | undefined)?]>): readonly PrismaModel[] =>
+  defs.map(([name, tableName, columns]) =>
+    Object.freeze({ name, tableName: tableName ?? name, columns: Object.freeze(columns ?? []) })
+  )
 
 describe('generateModelTypes', () => {
   it('emits Models const + ModelName type + ModelTables const', () => {
@@ -40,6 +42,20 @@ describe('generateModelTypes', () => {
     expect(out).toContain('export const Models = {} as const')
     expect(out).toContain('export type ModelName = never')
     expect(out).toContain('export const ModelTables = {} as const')
+    expect(out).toContain('export const ModelColumns = {} as const')
+    expect(out).toContain('export type GuarddogModels =')
+  })
+
+  it('emits ModelColumns + GuarddogModels with per-model columns from dbName', () => {
+    const out = generateModelTypes(models(['Workspace', undefined, ['id', 'tenantId', 'name']]))
+    expect(out).toContain('export const ModelColumns = {')
+    expect(out).toContain("  Workspace: ['id', 'tenantId', 'name'],")
+    expect(out).toContain('export type GuarddogModels = { readonly [K in keyof typeof ModelColumns]')
+  })
+
+  it('emits an empty column tuple for a model with no columns', () => {
+    const out = generateModelTypes(models(['Empty', undefined, []]))
+    expect(out).toContain('  Empty: [],')
   })
 
   it('uses default header marking the file as generated', () => {

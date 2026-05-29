@@ -54,6 +54,10 @@ export async function runGuarddogGenerator(options: GeneratorOptions): Promise<R
   const models: PrismaModel[] = options.dmmf.datamodel.models.map((m) => ({
     name: m.name,
     tableName: m.dbName ?? m.name,
+    columns: m.fields
+      .filter((f) => f.kind !== 'object')
+      .map((f) => f.dbName ?? f.name)
+      .toSorted(),
   }))
 
   const outputPath = resolveGeneratorOutputPath(options, 'generated/guarddog-models.ts')
