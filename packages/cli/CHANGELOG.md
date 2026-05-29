@@ -1,5 +1,38 @@
 # @flowchestra/prisma-guarddog
 
+## 0.1.0-alpha.9
+
+### Minor Changes
+
+- [`0525a7e`](https://github.com/Flowchestra/prisma-guarddog/commit/0525a7e33b0732811fe0c004edfc008b68e9e4e5)
+  Thanks [@Henry-Steele](https://github.com/Henry-Steele)! - CLI now reads
+  `prisma.config.ts` for path discovery. The Prisma `schema` location and
+  `migrations.path` feed guarddog's `prismaSchemaPath` / `migrationsDir`, so
+  guarddog follows wherever you've put your Prisma schema and migrations instead
+  of assuming `prisma/`.
+
+  Resolution precedence (highest first): explicit `guarddog.config.ts` values →
+  `prisma.config.ts` paths → conventional defaults (`prisma/schema.prisma`,
+  `prisma/migrations/`). guarddog's own schema file (`prisma/guarddog.ts`) is
+  not a `prisma.config.ts` concern and stays a guarddog convention /
+  `guarddog.config.ts` override.
+
+  Lenient by design: a present-but-unloadable `prisma.config.ts` warns and falls
+  back to conventions rather than failing the command. Previously this was
+  deferred to "Phase 2"; consumers with non-default Prisma layouts no longer
+  need to restate those paths in `guarddog.config.ts`.
+
+### Patch Changes
+
+- Updated dependencies
+  [[`0525a7e`](https://github.com/Flowchestra/prisma-guarddog/commit/0525a7e33b0732811fe0c004edfc008b68e9e4e5)]:
+  - @flowchestra/prisma-guarddog-core@0.1.0-alpha.9
+  - @flowchestra/prisma-guarddog-emitter-postgres-column-privileges@0.1.0-alpha.9
+  - @flowchestra/prisma-guarddog-emitter-postgres-rls@0.1.0-alpha.9
+  - @flowchestra/prisma-guarddog-importer-postgres@0.1.0-alpha.9
+  - @flowchestra/prisma-guarddog-importer-prisma@0.1.0-alpha.9
+  - @flowchestra/prisma-guarddog-lint@0.1.0-alpha.9
+
 ## 0.1.0-alpha.8
 
 ### Patch Changes

@@ -20,9 +20,11 @@
     "feat-hasgrant-table-hint-autocomplete",
     "feat-hasgrant-table-hint",
     "feat-managed-sql-functions",
+    "feat-prisma-config-discovery",
     "feat-rank-group-grants-and-cli-overrides",
     "feat-table-backed-resource-grants",
     "fix-exports-default-and-importer-roles",
+    "fix-fn-args-instanceof-jiti",
     "initial-alpha"
   ]
 }
