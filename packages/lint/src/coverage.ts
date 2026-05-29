@@ -14,12 +14,21 @@
  * accessible to whichever role last had a blanket GRANT. This lint catches
  * exactly that.
  *
- * Additional warnings (not failures) flag work-in-progress:
+ * Additional warnings (not failures) flag work-in-progress and a known
+ * enforcement gap:
  *
  *   - `todo-marker` — policy carries one or more `.todo(...)` markers (the
  *     scaffold importer adds these; lint reminds you to clean them up).
  *   - `raw-sql-policy` — policy uses `rawSql()` for any verb (Phase 2 plan:
  *     replace with typed predicates).
+ *   - `column-privilege-unenforced` — model declares `.columnPrivileges()`,
+ *     but guarddog emits only the column-level GRANTs, not the base-table
+ *     REVOKE prelude needed to enforce them (issue #2). A column-level GRANT
+ *     does not restrict access on its own: any table-level `GRANT` (or a
+ *     PUBLIC default) supersedes it. Until guarddog manages base-table
+ *     privileges (tracked for a future release), the consumer must withhold
+ *     table-level privileges and grant only the allowed columns. This warning
+ *     stops that gap from failing silently.
  *
  * Pure function — no I/O, no DB.
  */
@@ -30,7 +39,7 @@ export type LintSeverity = 'error' | 'warning'
 
 export interface LintIssue {
   readonly severity: LintSeverity
-  readonly kind: 'missing-coverage' | 'todo-marker' | 'raw-sql-policy'
+  readonly kind: 'missing-coverage' | 'todo-marker' | 'raw-sql-policy' | 'column-privilege-unenforced'
   readonly modelName: string
   readonly detail: string
 }
@@ -69,6 +78,20 @@ export function lintCoverage(input: LintInput): LintReport {
         detail: `model "${model.name}" has no .policy(), .polymorphic(), or .noPolicy() declaration`,
       })
     }
+  }
+
+  for (const cp of input.guard.getColumnPrivileges()) {
+    const cols = Object.keys(cp.columns).toSorted().join(', ')
+    issues.push({
+      severity: 'warning',
+      kind: 'column-privilege-unenforced',
+      modelName: cp.model,
+      detail:
+        `model "${cp.model}" declares columnPrivileges (${cols}) but guarddog emits only the column-level GRANTs, ` +
+        'not a base-table REVOKE prelude — a column GRANT does not restrict access on its own, so any table-level ' +
+        'GRANT or PUBLIC default supersedes it. Withhold table-level privileges and grant only the allowed columns ' +
+        'until guarddog manages base-table grants (issue #2).',
+    })
   }
 
   for (const policy of input.guard.getPolicies()) {

@@ -91,6 +91,33 @@ describe('lintCoverage()', () => {
     expect(report.issues.some((i) => i.kind === 'raw-sql-policy')).toBe(true)
   })
 
+  it('flags columnPrivileges as an unenforced-warning (does not fail ok)', () => {
+    const guard = makeGuard()
+    guard
+      .model('Workspace')
+      .policy('app_user')
+      .select((p) => p.literal(true))
+    guard.model('Workspace').columnPrivileges({ apiKey: { select: ['app_user'] } })
+    const report = lintCoverage({ guard, prismaModels: [{ name: 'Workspace' }] })
+    expect(report.ok).toBe(true)
+    const warning = report.issues.find((i) => i.kind === 'column-privilege-unenforced')
+    expect(warning).toBeDefined()
+    expect(warning?.severity).toBe('warning')
+    expect(warning?.modelName).toBe('Workspace')
+    expect(warning?.detail).toContain('apiKey')
+    expect(warning?.detail).toContain('issue #2')
+  })
+
+  it('does not warn about column privileges when none are declared', () => {
+    const guard = makeGuard()
+    guard
+      .model('Workspace')
+      .policy('app_user')
+      .select((p) => p.literal(true))
+    const report = lintCoverage({ guard, prismaModels: [{ name: 'Workspace' }] })
+    expect(report.issues.some((i) => i.kind === 'column-privilege-unenforced')).toBe(false)
+  })
+
   it('returns deterministic ordering by (model, severity, kind)', () => {
     const guard = makeGuard()
     guard.model('B').policy('app_user').rawSql('select', 'true')
