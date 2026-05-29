@@ -237,6 +237,8 @@ export class PolymorphicTargetPolicyBuilder<
   private _update: UpdateSpec | undefined
   private _delete: DeleteSpec | undefined
   private readonly _todos: string[] = []
+  // Chained name override (ADR-0031), same semantics as `PolicyBuilder._declaredName`.
+  private _declaredName: string | undefined = undefined
 
   constructor(
     private readonly _host: PolymorphicHost<TClaimsShape, TGrantTableKeys, TFunctions>,
@@ -244,21 +246,42 @@ export class PolymorphicTargetPolicyBuilder<
   ) {}
 
   /**
+   * Override the auto-generated policy name for every subsequent verb on this
+   * target-policy builder (ADR-0031). The polymorphic auto-name embeds the
+   * discriminator (`<table>_<role>_<verb>_<discriminator>`); a declared name
+   * replaces the whole name (the discriminator suffix is the author's
+   * responsibility when overriding). Lint warns when set.
+   */
+  named(name: string | undefined): this {
+    if (name !== undefined && name.length === 0) {
+      throw new Error(
+        '[prisma-guarddog] PolymorphicTargetPolicyBuilder.named(): name must be a non-empty string or undefined.'
+      )
+    }
+    this._declaredName = name
+    return this
+  }
+
+  /**
    * Define the `USING` predicate for SELECT. The emitter prepends
    * `<discriminator> = '<value>'` automatically; do not restate it.
    */
-  select(fn: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys, TFunctions, TColumns>): this {
-    this._select = Object.freeze({ using: freezeExprDeep(fn(this._host._buildPredicate<TColumns>()).ast) })
+  select(
+    fn: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys, TFunctions, TColumns>,
+    opts?: { readonly name?: string }
+  ): this {
+    const using = freezeExprDeep(fn(this._host._buildPredicate<TColumns>()).ast)
+    this._select = Object.freeze({ using, ...this._resolveNameField(opts?.name) })
     return this
   }
 
   /** Define the `WITH CHECK` predicate for INSERT. ADR-0005. */
   insert(spec: {
     check: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys, TFunctions, TColumns>
+    readonly name?: string
   }): this {
-    this._insert = Object.freeze({
-      check: freezeExprDeep(spec.check(this._host._buildPredicate<TColumns>()).ast),
-    })
+    const check = freezeExprDeep(spec.check(this._host._buildPredicate<TColumns>()).ast)
+    this._insert = Object.freeze({ check, ...this._resolveNameField(spec.name) })
     return this
   }
 
@@ -269,11 +292,13 @@ export class PolymorphicTargetPolicyBuilder<
   update(spec: {
     using: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys, TFunctions, TColumns>
     check: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys, TFunctions, TColumns>
+    readonly name?: string
   }): this {
     const p = this._host._buildPredicate<TColumns>()
     this._update = Object.freeze({
       using: freezeExprDeep(spec.using(p).ast),
       check: freezeExprDeep(spec.check(p).ast),
+      ...this._resolveNameField(spec.name),
     })
     return this
   }
@@ -281,11 +306,23 @@ export class PolymorphicTargetPolicyBuilder<
   /** Define the `USING` predicate for DELETE. */
   delete(spec: {
     using: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys, TFunctions, TColumns>
+    readonly name?: string
   }): this {
-    this._delete = Object.freeze({
-      using: freezeExprDeep(spec.using(this._host._buildPredicate<TColumns>()).ast),
-    })
+    const using = freezeExprDeep(spec.using(this._host._buildPredicate<TColumns>()).ast)
+    this._delete = Object.freeze({ using, ...this._resolveNameField(spec.name) })
     return this
+  }
+
+  /** Resolve declared name for one verb — per-verb wins over chained `.named()`. */
+  private _resolveNameField(perVerb: string | undefined): { readonly name?: string } {
+    const name = perVerb ?? this._declaredName
+    if (name === undefined) return {}
+    if (name.length === 0) {
+      throw new Error(
+        `[prisma-guarddog] PolymorphicTargetPolicyBuilder("${this.dbRole}"): policy name must be a non-empty string.`
+      )
+    }
+    return { name }
   }
 
   /**

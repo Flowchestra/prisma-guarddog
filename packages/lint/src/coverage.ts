@@ -29,17 +29,33 @@
  *     privileges (tracked for a future release), the consumer must withhold
  *     table-level privileges and grant only the allowed columns. This warning
  *     stops that gap from failing silently.
+ *   - `policy-uses-declared-name` — a verb spec carries a user-declared `name`
+ *     (`.named(...)` / per-verb `{ name }`, ADR-0031). Opt-in escape hatch for
+ *     transitional adoption only — once the cutover is complete, drop the
+ *     override and converge on the auto-gen `<table>_<role>_<command>`. The
+ *     warning carries the auto-gen target so authors see the canonical name.
  *
  * Pure function — no I/O, no DB.
  */
 
-import type { GuarddogLike } from '@flowchestra/prisma-guarddog-core'
+import {
+  defaultTableResolver,
+  type GuarddogLike,
+  policyName,
+  type SelectSpec,
+  type Verb,
+} from '@flowchestra/prisma-guarddog-core'
 
 export type LintSeverity = 'error' | 'warning'
 
 export interface LintIssue {
   readonly severity: LintSeverity
-  readonly kind: 'missing-coverage' | 'todo-marker' | 'raw-sql-policy' | 'column-privilege-unenforced'
+  readonly kind:
+    | 'missing-coverage'
+    | 'todo-marker'
+    | 'raw-sql-policy'
+    | 'column-privilege-unenforced'
+    | 'policy-uses-declared-name'
   readonly modelName: string
   readonly detail: string
 }
@@ -103,6 +119,7 @@ export function lintCoverage(input: LintInput): LintReport {
         detail: `unresolved .todo() on ${policy.model}::${policy.dbRole}: ${todo}`,
       })
     }
+    const table = policy.table ?? defaultTableResolver(policy.model)
     for (const verb of ['select', 'insert', 'update', 'delete'] as const) {
       const spec = policy[verb]
       if (spec === undefined) continue
@@ -111,6 +128,28 @@ export function lintCoverage(input: LintInput): LintReport {
       }
       if ('check' in spec && spec.check.kind === 'raw') {
         issues.push(rawSqlIssue(policy.model, policy.dbRole, verb))
+      }
+      const declaredName = (spec as SelectSpec).name
+      if (declaredName !== undefined) {
+        issues.push(declaredNameIssue(policy.model, policy.dbRole, verb, declaredName, table))
+      }
+    }
+  }
+
+  for (const poly of input.guard.getPolymorphics()) {
+    const polyTable = poly.table ?? defaultTableResolver(poly.modelName)
+    for (const target of poly.targets) {
+      for (const tp of target.policies) {
+        for (const verb of ['select', 'insert', 'update', 'delete'] as const) {
+          const spec = tp[verb]
+          if (spec === undefined) continue
+          const declaredName = (spec as SelectSpec).name
+          if (declaredName !== undefined) {
+            issues.push(
+              declaredNameIssue(poly.modelName, tp.dbRole, verb, declaredName, polyTable, target.discriminatorValue)
+            )
+          }
+        }
       }
     }
   }
@@ -127,6 +166,31 @@ function rawSqlIssue(modelName: string, dbRole: string, verb: string): LintIssue
     modelName,
     detail: `${modelName}::${dbRole}.${verb} uses rawSql() — plan to replace with a typed predicate`,
   }
+}
+
+/**
+ * Warning for ADR-0031's `.named()` / per-verb `{ name }`. Opt-in escape
+ * hatch for transitional adoption — surfaces the auto-gen target so authors
+ * see the canonical name they should converge on once the cutover is done.
+ */
+function declaredNameIssue(
+  modelName: string,
+  dbRole: string,
+  verb: Verb,
+  declaredName: string,
+  table: string,
+  discriminatorValue?: string
+): LintIssue {
+  const autoName = policyName(
+    discriminatorValue !== undefined ? { table, dbRole, verb, discriminatorValue } : { table, dbRole, verb }
+  )
+  const same = declaredName === autoName
+  const detail =
+    `${modelName}::${dbRole}.${verb} declares policy name "${declaredName}"` +
+    (same
+      ? ' — this matches the auto-generated name; drop the override to converge on the convention.'
+      : ` — transitional only (ADR-0031); converge on the auto-generated name "${autoName}" once adoption is complete.`)
+  return { severity: 'warning', kind: 'policy-uses-declared-name', modelName, detail }
 }
 
 function computeCoveredModels(guard: GuarddogLike): ReadonlySet<string> {

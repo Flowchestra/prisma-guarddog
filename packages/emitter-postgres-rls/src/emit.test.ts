@@ -271,3 +271,36 @@ describe('emitPolicy — return value is frozen', () => {
     expect(Object.isFrozen(sql)).toBe(true)
   })
 })
+
+describe('emitPolicy — declared policy name (ADR-0031)', () => {
+  it('renders the declared name in both DROP and CREATE for an atomic in-place swap', () => {
+    const guard = makeGuard()
+    guard
+      .model('Workspace')
+      .policy('app_user')
+      .named('workspaces_visibility_select')
+      .select((p) => p.claim('tenantId').eq(col('tenantId')))
+    const sql = emitPolicy(guard.getPolicies()[0]!, ctx)
+    expect(sql.find((s) => s.startsWith('DROP POLICY'))).toMatch(
+      /DROP POLICY IF EXISTS workspaces_visibility_select ON workspace/
+    )
+    expect(sql.find((s) => s.startsWith('CREATE POLICY'))).toMatch(
+      /CREATE POLICY workspaces_visibility_select ON workspace FOR SELECT/
+    )
+    // and the auto-gen name is NOT used
+    expect(sql.join('\n')).not.toMatch(/workspace_app_user_select/)
+  })
+
+  it('per-verb name wins over chained .named() for that verb', () => {
+    const guard = makeGuard()
+    guard
+      .model('Workspace')
+      .policy('app_user')
+      .named('shared_name')
+      .select((p) => p.literal(true))
+      .insert({ check: (p) => p.literal(true), name: 'override_for_insert' })
+    const sql = emitPolicy(guard.getPolicies()[0]!, ctx).join('\n')
+    expect(sql).toMatch(/CREATE POLICY shared_name ON workspace FOR SELECT/)
+    expect(sql).toMatch(/CREATE POLICY override_for_insert ON workspace FOR INSERT/)
+  })
+})

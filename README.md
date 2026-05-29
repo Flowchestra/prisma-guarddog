@@ -104,6 +104,15 @@ guarddog migrate --drop-unmanaged --against "$DATABASE_URL"
 
 Conservative by default — `migrate` never drops a foreign policy unless you pass `--drop-unmanaged`, and `adopt` only writes the keep-marks/drops you confirm per policy.
 
+For an **atomic, in-place upgrade** of a legacy policy (no widening window during the cutover), declare the legacy name on the typed replacement — `.named()` chained, or `{ name }` per verb. The emit renders `DROP POLICY IF EXISTS <legacy>; CREATE POLICY <legacy> …` so the typed predicate swaps in place. Lint warns to nudge you back to the auto-gen convention once adoption is complete ([ADR-0031](./docs/adr/0031-user-declared-policy-names.md)):
+
+```ts
+guard.model('Workspace').policy('app_user')
+  .named('workspaces_visibility_select')                              // legacy name preserved
+  .select((p) => p.col('tenantId').eq(p.claim('tenantId')))           // typed replacement, in-place
+  .insert({ check: (p) => …, name: 'workspaces_visibility_insert' }) // per-verb wins
+```
+
 ## Quickstart
 
 Packages publish to **GitHub Packages** under the `@flowchestra` scope. Two `.npmrc` lines are required — typically in your repo or `~/.npmrc`:

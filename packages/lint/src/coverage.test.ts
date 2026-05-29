@@ -130,4 +130,43 @@ describe('lintCoverage()', () => {
     const names = report.issues.map((i) => i.modelName)
     expect(names).toEqual([...names].toSorted())
   })
+
+  it('flags policies with a user-declared name (ADR-0031) and surfaces the auto-gen target', () => {
+    const guard = makeGuard()
+    // Different declared name → message includes the auto-gen target.
+    guard
+      .model('Workspace')
+      .policy('app_user')
+      .named('workspaces_visibility_select')
+      .select((p) => p.claim('tenantId').eq(col('tenantId')))
+    // Declared name that matches the auto-gen → message nudges to drop the override.
+    guard
+      .model('Tenant')
+      .policy('app_user')
+      .select((p) => p.literal(true), { name: 'tenant_app_user_select' })
+
+    const report = lintCoverage({ guard, prismaModels: [{ name: 'Workspace' }, { name: 'Tenant' }] })
+    const ws = report.issues.find((i) => i.kind === 'policy-uses-declared-name' && i.modelName === 'Workspace')
+    expect(ws).toBeDefined()
+    expect(ws?.severity).toBe('warning')
+    expect(ws?.detail).toContain('workspaces_visibility_select')
+    expect(ws?.detail).toContain('workspace_app_user_select') // auto-gen target
+
+    const tn = report.issues.find((i) => i.kind === 'policy-uses-declared-name' && i.modelName === 'Tenant')
+    expect(tn).toBeDefined()
+    expect(tn?.detail).toMatch(/matches the auto-generated name/)
+
+    // Warnings, never errors — `ok` stays true.
+    expect(report.ok).toBe(true)
+  })
+
+  it('does not flag policies without a declared name', () => {
+    const guard = makeGuard()
+    guard
+      .model('Workspace')
+      .policy('app_user')
+      .select((p) => p.claim('tenantId').eq(col('tenantId')))
+    const report = lintCoverage({ guard, prismaModels: [{ name: 'Workspace' }] })
+    expect(report.issues.some((i) => i.kind === 'policy-uses-declared-name')).toBe(false)
+  })
 })

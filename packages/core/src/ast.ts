@@ -74,22 +74,32 @@ export type Expr =
 /**
  * Per-verb policy specification. `USING` and `WITH CHECK` are explicit and
  * never inferred from one another (ADR-0005).
+ *
+ * Each spec carries an optional `name` overriding the auto-generated
+ * `<table>_<role>_<command>` policy name (ADR-0031) — opt-in escape hatch for
+ * transitional adoption so a typed replacement renders as
+ * `DROP POLICY IF EXISTS <legacy>; CREATE POLICY <legacy> …` and upgrades the
+ * legacy policy in place, atomically. Lint warns when set.
  */
 export interface SelectSpec {
   readonly using: Expr
+  readonly name?: string
 }
 
 export interface InsertSpec {
   readonly check: Expr
+  readonly name?: string
 }
 
 export interface UpdateSpec {
   readonly using: Expr
   readonly check: Expr
+  readonly name?: string
 }
 
 export interface DeleteSpec {
   readonly using: Expr
+  readonly name?: string
 }
 
 /**

@@ -84,20 +84,23 @@ export function emitPolicy(policy: PolicyAst, ctx: EmitContext): readonly string
   const exprCtx: ExprCompileCtx = makeExprCtx(table, ctx, ctx.qualifyColumns ?? false)
   const dbRoleSql = quoteIdent(policy.dbRole)
 
+  // `spec.name ?? policyName(...)` honors user-declared overrides (ADR-0031).
+  // The same name flows into both the DROP and CREATE inside `emitCreatePolicy`,
+  // so a typed replacement under a legacy name swaps in place atomically.
   if (policy.select !== undefined) {
-    const name = policyName({ table, dbRole: policy.dbRole, verb: 'select' })
+    const name = policy.select.name ?? policyName({ table, dbRole: policy.dbRole, verb: 'select' })
     out.push(...emitCreatePolicy(name, table, dbRoleSql, 'SELECT', policy.select.using, undefined, exprCtx))
   }
   if (policy.insert !== undefined) {
-    const name = policyName({ table, dbRole: policy.dbRole, verb: 'insert' })
+    const name = policy.insert.name ?? policyName({ table, dbRole: policy.dbRole, verb: 'insert' })
     out.push(...emitCreatePolicy(name, table, dbRoleSql, 'INSERT', undefined, policy.insert.check, exprCtx))
   }
   if (policy.update !== undefined) {
-    const name = policyName({ table, dbRole: policy.dbRole, verb: 'update' })
+    const name = policy.update.name ?? policyName({ table, dbRole: policy.dbRole, verb: 'update' })
     out.push(...emitCreatePolicy(name, table, dbRoleSql, 'UPDATE', policy.update.using, policy.update.check, exprCtx))
   }
   if (policy.delete !== undefined) {
-    const name = policyName({ table, dbRole: policy.dbRole, verb: 'delete' })
+    const name = policy.delete.name ?? policyName({ table, dbRole: policy.dbRole, verb: 'delete' })
     out.push(...emitCreatePolicy(name, table, dbRoleSql, 'DELETE', policy.delete.using, undefined, exprCtx))
   }
 
@@ -148,7 +151,7 @@ function appendTargetPolicies(
   }
 
   if (targetPolicy.select !== undefined) {
-    const name = policyName({ ...baseParts, verb: 'select' })
+    const name = targetPolicy.select.name ?? policyName({ ...baseParts, verb: 'select' })
     out.push(
       ...emitCreatePolicy(
         name,
@@ -163,7 +166,7 @@ function appendTargetPolicies(
     )
   }
   if (targetPolicy.insert !== undefined) {
-    const name = policyName({ ...baseParts, verb: 'insert' })
+    const name = targetPolicy.insert.name ?? policyName({ ...baseParts, verb: 'insert' })
     out.push(
       ...emitCreatePolicy(
         name,
@@ -178,7 +181,7 @@ function appendTargetPolicies(
     )
   }
   if (targetPolicy.update !== undefined) {
-    const name = policyName({ ...baseParts, verb: 'update' })
+    const name = targetPolicy.update.name ?? policyName({ ...baseParts, verb: 'update' })
     out.push(
       ...emitCreatePolicy(
         name,
@@ -193,7 +196,7 @@ function appendTargetPolicies(
     )
   }
   if (targetPolicy.delete !== undefined) {
-    const name = policyName({ ...baseParts, verb: 'delete' })
+    const name = targetPolicy.delete.name ?? policyName({ ...baseParts, verb: 'delete' })
     out.push(
       ...emitCreatePolicy(
         name,

@@ -102,6 +102,10 @@ export function compileToOps(guard: GuarddogLike, opts: CompileOptions = {}): re
   appendPolicyOps(policyOps, guard, resolveTable, rlsTables)
   appendPolymorphicOps(policyOps, guard, resolveTable, rlsTables)
   appendColumnPrivilegeOps(columnGrantOps, guard, resolveTable)
+  // Reject two policies on the same table with the same (auto-gen or
+  // user-declared) name (ADR-0031). Postgres would also reject, but a
+  // compile-time error gives a better signal than waiting for apply.
+  assertNoDuplicatePolicyNames(policyOps)
 
   const rlsOps: Op[] = []
   appendRlsOps(rlsOps, rlsTables)
@@ -297,21 +301,63 @@ function appendPolicyOps(
     const table = pol.table ?? resolveTable(pol.model)
     let added = false
     if (pol.select) {
-      out.push(makeCreatePolicyOp(pol.model, table, pol.dbRole, 'select', pol.select.using, undefined, pol.todos))
+      out.push(
+        makeCreatePolicyOp(
+          pol.model,
+          table,
+          pol.dbRole,
+          'select',
+          pol.select.using,
+          undefined,
+          pol.todos,
+          pol.select.name
+        )
+      )
       added = true
     }
     if (pol.insert) {
-      out.push(makeCreatePolicyOp(pol.model, table, pol.dbRole, 'insert', undefined, pol.insert.check, pol.todos))
+      out.push(
+        makeCreatePolicyOp(
+          pol.model,
+          table,
+          pol.dbRole,
+          'insert',
+          undefined,
+          pol.insert.check,
+          pol.todos,
+          pol.insert.name
+        )
+      )
       added = true
     }
     if (pol.update) {
       out.push(
-        makeCreatePolicyOp(pol.model, table, pol.dbRole, 'update', pol.update.using, pol.update.check, pol.todos)
+        makeCreatePolicyOp(
+          pol.model,
+          table,
+          pol.dbRole,
+          'update',
+          pol.update.using,
+          pol.update.check,
+          pol.todos,
+          pol.update.name
+        )
       )
       added = true
     }
     if (pol.delete) {
-      out.push(makeCreatePolicyOp(pol.model, table, pol.dbRole, 'delete', pol.delete.using, undefined, pol.todos))
+      out.push(
+        makeCreatePolicyOp(
+          pol.model,
+          table,
+          pol.dbRole,
+          'delete',
+          pol.delete.using,
+          undefined,
+          pol.todos,
+          pol.delete.name
+        )
+      )
       added = true
     }
     if (added) rlsTables.add(table)
@@ -358,7 +404,8 @@ function appendPolymorphicTargetPolicy(
         undefined,
         pol.todos,
         poly.discriminator,
-        target.discriminatorValue
+        target.discriminatorValue,
+        pol.select.name
       )
     )
     added = true
@@ -374,7 +421,8 @@ function appendPolymorphicTargetPolicy(
         fuse(pol.insert.check),
         pol.todos,
         poly.discriminator,
-        target.discriminatorValue
+        target.discriminatorValue,
+        pol.insert.name
       )
     )
     added = true
@@ -390,7 +438,8 @@ function appendPolymorphicTargetPolicy(
         fuse(pol.update.check),
         pol.todos,
         poly.discriminator,
-        target.discriminatorValue
+        target.discriminatorValue,
+        pol.update.name
       )
     )
     added = true
@@ -406,7 +455,8 @@ function appendPolymorphicTargetPolicy(
         undefined,
         pol.todos,
         poly.discriminator,
-        target.discriminatorValue
+        target.discriminatorValue,
+        pol.delete.name
       )
     )
     added = true
@@ -447,6 +497,36 @@ function appendColumnVerbGrants(
   }
 }
 
+/**
+ * Reject two `create-policy` ops sharing the same `(table, name)` (ADR-0031).
+ * Auto-gen names can't collide (`<table>_<role>_<verb>` is unique by
+ * construction); user-declared names can. Throws a clear, actionable error
+ * naming the colliding policies.
+ */
+function assertNoDuplicatePolicyNames(ops: ReadonlyArray<Op>): void {
+  const seen = new Map<string, { table: string; name: string; model: string; dbRole: string; verb: string }>()
+  for (const op of ops) {
+    if (op.kind !== 'create-policy') continue
+    const key = `${op.policy.table}::${op.policy.name}`
+    const prior = seen.get(key)
+    if (prior !== undefined) {
+      throw new Error(
+        `[prisma-guarddog] duplicate policy name "${op.policy.name}" on table "${op.policy.table}" — ` +
+          `declared by ${prior.model}::${prior.dbRole}.${prior.verb} and ${op.policy.model}::${op.policy.dbRole}.${op.policy.verb}. ` +
+          'Two policies on the same table cannot share a name. Drop the `.named(...)` / `{ name }` override on one of them, ' +
+          'or give them distinct names.'
+      )
+    }
+    seen.set(key, {
+      table: op.policy.table,
+      name: op.policy.name,
+      model: op.policy.model,
+      dbRole: op.policy.dbRole,
+      verb: op.policy.verb,
+    })
+  }
+}
+
 function makeCreatePolicyOp(
   model: string,
   table: string,
@@ -454,9 +534,11 @@ function makeCreatePolicyOp(
   verb: Verb,
   using: Expr | undefined,
   check: Expr | undefined,
-  todos: ReadonlyArray<string>
+  todos: ReadonlyArray<string>,
+  // Optional user-declared override (ADR-0031). When undefined, auto-gen.
+  declaredName: string | undefined
 ): Op {
-  const name = policyName({ table, dbRole, verb })
+  const name = declaredName ?? policyName({ table, dbRole, verb })
   const policy: PolicyOpRecord = Object.freeze({
     name,
     model,
@@ -480,9 +562,12 @@ function makePolymorphicPolicyOp(
   check: Expr | undefined,
   todos: ReadonlyArray<string>,
   discriminatorColumn: string,
-  discriminatorValue: string
+  discriminatorValue: string,
+  // Optional user-declared override (ADR-0031) — replaces the whole auto-name
+  // (the discriminator suffix is the author's responsibility when overriding).
+  declaredName: string | undefined
 ): Op {
-  const name = policyName({ table, dbRole, verb, discriminatorValue })
+  const name = declaredName ?? policyName({ table, dbRole, verb, discriminatorValue })
   const policy: PolicyOpRecord = Object.freeze({
     name,
     model,

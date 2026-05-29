@@ -61,6 +61,7 @@ All foundational decisions are captured as ADRs in [`adr/`](./adr/). Read [`adr/
 | 0026 | [guarddog-managed SQL functions (defineFunctions)](./adr/0026-managed-sql-functions.md)                      |
 | 0027 | [Column-privilege enforcement gap: lint now, base-table later](./adr/0027-column-privilege-enforcement-gap.md) |
 | 0028 | [Typed model + column references (model() / p.col() autocomplete)](./adr/0028-typed-model-and-column-references.md) |
+| 0031 | [Opt-in user-declared policy names (.named() + per-verb { name })](./adr/0031-user-declared-policy-names.md)  |
 
 ### Migration + state
 

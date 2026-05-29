@@ -463,6 +463,10 @@ export class PolicyBuilder<
   private _update: UpdateSpec | undefined
   private _delete: DeleteSpec | undefined
   private readonly _todos: string[] = []
+  // Chained name override (ADR-0031): persists across subsequent verb calls
+  // until `.named(undefined)` clears it or a fresh `.policy()` returns a new
+  // builder. Per-verb `{ name }` wins over this when both are set.
+  private _declaredName: string | undefined = undefined
 
   constructor(
     private readonly _guard: Guarddog<TClaimsShape, TDbRoles, string, string, string, TGrantTableKeys, TFunctions>,
@@ -472,48 +476,92 @@ export class PolicyBuilder<
   ) {}
 
   /**
-   * Define the `USING` predicate for SELECT. Re-calling overwrites the prior
-   * definition for this verb.
+   * Override the auto-generated policy name for every subsequent verb on this
+   * builder (ADR-0031). Opt-in escape hatch for transitional adoption: a typed
+   * replacement under a legacy name renders `DROP POLICY IF EXISTS <legacy>;
+   * CREATE POLICY <legacy> …`, upgrading the legacy policy in place with no
+   * widening window. Pass `undefined` to clear; a per-verb `{ name }` wins.
+   * Lint warns whenever any verb spec carries a declared name.
    */
-  select(fn: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys, TFunctions, TColumns>): this {
-    this._select = Object.freeze({ using: freezeExprDeep(fn(this._guard._buildPredicate<TColumns>()).ast) })
+  named(name: string | undefined): this {
+    if (name !== undefined && name.length === 0) {
+      throw new Error('[prisma-guarddog] PolicyBuilder.named(): name must be a non-empty string or undefined.')
+    }
+    this._declaredName = name
+    return this
+  }
+
+  /**
+   * Define the `USING` predicate for SELECT. Re-calling overwrites the prior
+   * definition for this verb. `opts.name` overrides the auto-generated policy
+   * name for this verb (ADR-0031).
+   */
+  select(
+    fn: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys, TFunctions, TColumns>,
+    opts?: { readonly name?: string }
+  ): this {
+    const using = freezeExprDeep(fn(this._guard._buildPredicate<TColumns>()).ast)
+    this._select = Object.freeze({ using, ...this._resolveNameField(opts?.name) })
     return this
   }
 
   /**
    * Define the `WITH CHECK` predicate for INSERT. INSERT has no `USING` —
-   * Postgres uses the CHECK clause to evaluate new rows. ADR-0005.
+   * Postgres uses the CHECK clause to evaluate new rows. ADR-0005. `spec.name`
+   * overrides the auto-generated policy name (ADR-0031).
    */
   insert(spec: {
     check: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys, TFunctions, TColumns>
+    readonly name?: string
   }): this {
-    this._insert = Object.freeze({ check: freezeExprDeep(spec.check(this._guard._buildPredicate<TColumns>()).ast) })
+    const check = freezeExprDeep(spec.check(this._guard._buildPredicate<TColumns>()).ast)
+    this._insert = Object.freeze({ check, ...this._resolveNameField(spec.name) })
     return this
   }
 
   /**
    * Define BOTH `USING` (eligibility) and `WITH CHECK` (post-update shape)
    * for UPDATE. Both are mandatory and never inferred from each other.
-   * ADR-0005.
+   * ADR-0005. `spec.name` overrides the auto-generated policy name (ADR-0031).
    */
   update(spec: {
     using: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys, TFunctions, TColumns>
     check: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys, TFunctions, TColumns>
+    readonly name?: string
   }): this {
     const p = this._guard._buildPredicate<TColumns>()
     this._update = Object.freeze({
       using: freezeExprDeep(spec.using(p).ast),
       check: freezeExprDeep(spec.check(p).ast),
+      ...this._resolveNameField(spec.name),
     })
     return this
   }
 
-  /** Define the `USING` predicate for DELETE. */
+  /** Define the `USING` predicate for DELETE. `spec.name` overrides the auto-gen name (ADR-0031). */
   delete(spec: {
     using: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys, TFunctions, TColumns>
+    readonly name?: string
   }): this {
-    this._delete = Object.freeze({ using: freezeExprDeep(spec.using(this._guard._buildPredicate<TColumns>()).ast) })
+    const using = freezeExprDeep(spec.using(this._guard._buildPredicate<TColumns>()).ast)
+    this._delete = Object.freeze({ using, ...this._resolveNameField(spec.name) })
     return this
+  }
+
+  /**
+   * Resolve the declared name for one verb spec. Per-verb override wins over
+   * the chained `.named()`; both must be non-empty if set. Returns a sparse
+   * `{ name }` object so the AST stays clean when nothing is declared.
+   */
+  private _resolveNameField(perVerb: string | undefined): { readonly name?: string } {
+    const name = perVerb ?? this._declaredName
+    if (name === undefined) return {}
+    if (name.length === 0) {
+      throw new Error(
+        `[prisma-guarddog] PolicyBuilder("${this.modelName}::${this.dbRole}"): policy name must be a non-empty string.`
+      )
+    }
+    return { name }
   }
 
   /**
