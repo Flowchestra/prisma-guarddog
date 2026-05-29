@@ -12,8 +12,14 @@
  * replace with typed predicates incrementally. See ADR-0012.
  */
 
-export { readColumnPrivileges, readPgPolicies } from './db.js'
-export type { ImportedColumnPrivilege, ImportedPolicyRow, PgQueryClient, ReadPoliciesOptions } from './db.js'
+export { readColumnPrivileges, readPgPolicies, readPolicyInventory } from './db.js'
+export type {
+  ImportedColumnPrivilege,
+  ImportedPolicyRow,
+  PgQueryClient,
+  PolicyInventoryRow,
+  ReadPoliciesOptions,
+} from './db.js'
 
 export { generateScaffold } from './codegen.js'
 export type { GenerateScaffoldInput } from './codegen.js'

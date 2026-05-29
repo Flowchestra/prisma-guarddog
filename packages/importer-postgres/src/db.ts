@@ -44,6 +44,22 @@ export interface ImportedColumnPrivilege {
   readonly privilege: 'SELECT' | 'INSERT' | 'UPDATE'
 }
 
+/**
+ * One live policy as seen for drift detection (ADR-0029): identity + the
+ * ownership comment guarddog stamps via `COMMENT ON POLICY`. Read from the
+ * `pg_policy` catalog (not the `pg_policies` view) because only the catalog
+ * exposes the policy oid needed to join `pg_description` for the comment.
+ */
+export interface PolicyInventoryRow {
+  readonly schema: string
+  readonly table: string
+  readonly policyName: string
+  readonly command: 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE' | 'ALL'
+  readonly permissive: boolean
+  /** `COMMENT ON POLICY` value, or null. guarddog-managed policies carry the ownership marker. */
+  readonly comment: string | null
+}
+
 export interface ReadPoliciesOptions {
   /** Postgres schema name to filter on. Defaults to `public`. */
   readonly schema?: string
@@ -105,6 +121,60 @@ interface RawPolicyRow {
   readonly cmd: string
   readonly qual: string | null
   readonly with_check: string | null
+}
+
+/**
+ * Read the live policy inventory (identity + ownership comment) for drift
+ * detection (ADR-0029). Joins `pg_policy` → `pg_class`/`pg_namespace` for
+ * names and `pg_description` (via `obj_description`) for the guarddog
+ * ownership marker. Sorted by (table, policy) for determinism.
+ */
+export async function readPolicyInventory(
+  client: PgQueryClient,
+  opts: ReadPoliciesOptions = {}
+): Promise<ReadonlyArray<PolicyInventoryRow>> {
+  const schema = opts.schema ?? 'public'
+  const { rows } = await client.query<RawInventoryRow>(
+    `SELECT n.nspname AS schema, c.relname AS table_name, pol.polname AS policy_name,
+            pol.polpermissive AS permissive, pol.polcmd AS cmd,
+            obj_description(pol.oid, 'pg_policy') AS comment
+     FROM pg_policy pol
+     JOIN pg_class c ON c.oid = pol.polrelid
+     JOIN pg_namespace n ON n.oid = c.relnamespace
+     WHERE n.nspname = $1
+     ORDER BY c.relname, pol.polname`,
+    [schema]
+  )
+  return Object.freeze(rows.map(normalizeInventoryRow))
+}
+
+interface RawInventoryRow {
+  readonly schema: string
+  readonly table_name: string
+  readonly policy_name: string
+  readonly permissive: boolean
+  /** `pg_policy.polcmd`: r=SELECT, a=INSERT, w=UPDATE, d=DELETE, *=ALL. */
+  readonly cmd: string
+  readonly comment: string | null
+}
+
+const POLCMD_TO_COMMAND: Readonly<Record<string, PolicyInventoryRow['command']>> = {
+  r: 'SELECT',
+  a: 'INSERT',
+  w: 'UPDATE',
+  d: 'DELETE',
+  '*': 'ALL',
+}
+
+function normalizeInventoryRow(row: RawInventoryRow): PolicyInventoryRow {
+  return Object.freeze({
+    schema: row.schema,
+    table: row.table_name,
+    policyName: row.policy_name,
+    command: POLCMD_TO_COMMAND[row.cmd] ?? 'ALL',
+    permissive: row.permissive === true,
+    comment: row.comment,
+  })
 }
 
 interface RawColumnPrivilegeRow {

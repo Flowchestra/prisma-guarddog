@@ -10,7 +10,7 @@ import {
 import { col } from '@flowchestra/prisma-guarddog-core'
 import { describe, expect, it } from 'vitest'
 
-import { renderOps } from './render-ops.js'
+import { GUARDDOG_POLICY_COMMENT, renderOps } from './render-ops.js'
 
 function makeGuard() {
   const guard = new Guarddog({
@@ -70,6 +70,17 @@ describe('renderOps()', () => {
     expect(createPolicySql).toMatch(/USING \(/)
     const dropSql = sql.find((s) => s.startsWith('DROP POLICY'))!
     expect(dropSql).toMatch(/DROP POLICY IF EXISTS workspace_app_user_select/)
+  })
+
+  it('stamps every created policy with the guarddog ownership comment (ADR-0029)', () => {
+    const guard = makeGuard()
+    const sql = renderOps(compileToOps(guard), { claims: guard.config.claims })
+    const comment = sql.find((s) => s.startsWith('COMMENT ON POLICY'))!
+    expect(comment).toBe(`COMMENT ON POLICY workspace_app_user_select ON workspace IS '${GUARDDOG_POLICY_COMMENT}';`)
+    // one comment per created policy
+    const creates = sql.filter((s) => s.startsWith('CREATE POLICY')).length
+    const comments = sql.filter((s) => s.startsWith('COMMENT ON POLICY')).length
+    expect(comments).toBe(creates)
   })
 
   it('renders column GRANT and REVOKE (camelCase columns get quoted)', () => {

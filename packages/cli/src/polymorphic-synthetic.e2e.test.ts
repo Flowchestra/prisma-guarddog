@@ -83,9 +83,9 @@ const TEARDOWN_SQL = `
   DROP TABLE IF EXISTS poly_attachment, poly_beta, poly_alpha CASCADE;
   DO $$
   BEGIN
-    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_user') THEN
-      EXECUTE 'DROP OWNED BY app_user CASCADE';
-      EXECUTE 'DROP ROLE app_user';
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'poly_user') THEN
+      EXECUTE 'DROP OWNED BY poly_user CASCADE';
+      EXECUTE 'DROP ROLE poly_user';
     END IF;
   END
   $$;
@@ -103,7 +103,7 @@ function buildSyntheticGuard() {
         betaGrants: c.array(c.uuid()),
       }),
     }),
-    dbRoles: defineDbRoles({ app_user: { inherits: [], nologin: true } }),
+    dbRoles: defineDbRoles({ poly_user: { inherits: [], nologin: true } }),
     appRoles: defineAppRoles({}),
     resources: defineResources({}),
   })
@@ -112,12 +112,12 @@ function buildSyntheticGuard() {
 
   poly
     .target('Alpha', { model: 'Alpha' })
-    .policy('app_user')
+    .policy('poly_user')
     .select((p) => p.claim('tenantId').eq(col('tenantId')))
 
   poly
     .target('Beta', { model: 'Beta' })
-    .policy('app_user')
+    .policy('poly_user')
     .select((p) =>
       p
         .claim('tenantId')
@@ -143,8 +143,8 @@ describe.skipIf(!enabled)('synthetic polymorphic E2E (issue 1.3-B)', () => {
     for (const stmt of sql) {
       await owner.query(stmt)
     }
-    await owner.query('GRANT SELECT ON poly_alpha, poly_beta, poly_attachment TO app_user')
-    await owner.query('GRANT USAGE ON SCHEMA public TO app_user')
+    await owner.query('GRANT SELECT ON poly_alpha, poly_beta, poly_attachment TO poly_user')
+    await owner.query('GRANT USAGE ON SCHEMA public TO poly_user')
 
     await owner.query(SEED_SQL)
   }, 30_000)
@@ -159,7 +159,7 @@ describe.skipIf(!enabled)('synthetic polymorphic E2E (issue 1.3-B)', () => {
   it('tenant-only claim: Alpha attachment visible, Beta attachment hidden', async () => {
     await withScenario(
       owner,
-      { role: 'app_user', claims: { sub: ALPHA_ID, tenantId: TENANT, betaGrants: [] } },
+      { role: 'poly_user', claims: { sub: ALPHA_ID, tenantId: TENANT, betaGrants: [] } },
       async (db) => {
         const result = await assertAllowed(
           db.query<{ id: string; targetType: string }>(
@@ -175,7 +175,7 @@ describe.skipIf(!enabled)('synthetic polymorphic E2E (issue 1.3-B)', () => {
   it('beta grant present in claim: both attachments visible', async () => {
     await withScenario(
       owner,
-      { role: 'app_user', claims: { sub: ALPHA_ID, tenantId: TENANT, betaGrants: [BETA_ID] } },
+      { role: 'poly_user', claims: { sub: ALPHA_ID, tenantId: TENANT, betaGrants: [BETA_ID] } },
       async (db) => {
         const result = await assertAllowed(
           db.query<{ id: string; targetType: string }>(
@@ -192,7 +192,7 @@ describe.skipIf(!enabled)('synthetic polymorphic E2E (issue 1.3-B)', () => {
     const otherTenant = '00000000-0000-0000-0000-000000008888'
     await withScenario(
       owner,
-      { role: 'app_user', claims: { sub: ALPHA_ID, tenantId: otherTenant, betaGrants: [BETA_ID] } },
+      { role: 'poly_user', claims: { sub: ALPHA_ID, tenantId: otherTenant, betaGrants: [BETA_ID] } },
       async (db) => {
         const result = await assertAllowed(db.query<{ id: string }>('SELECT id FROM poly_attachment', []))
         expect(result.rows).toHaveLength(0)

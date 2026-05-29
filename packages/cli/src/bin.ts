@@ -9,6 +9,7 @@
  *   guarddog emit      — render full schema as SQL to stdout (or --out file)
  *   guarddog diff      — preview what the next migrate would emit, no writes
  *   guarddog import    — scaffold a guarddog.ts from a live database
+ *   guarddog drift     — compare declared policies vs a live DB (ADR-0029)
  */
 
 import { Command } from 'commander'
@@ -17,6 +18,7 @@ import pc from 'picocolors'
 import pkg from '../package.json' with { type: 'json' }
 import { runCheck } from './commands/check.js'
 import { runDiff } from './commands/diff.js'
+import { runDrift } from './commands/drift.js'
 import { runEmit } from './commands/emit.js'
 import { runImport } from './commands/import.js'
 import { runMigrate } from './commands/migrate.js'
@@ -48,11 +50,23 @@ async function main(): Promise<void> {
     .description('Diff the schema against the existing sidecars and write a new timestamped migration.')
     .option('--cwd <path>', 'override the working directory used for config discovery')
     .option('--slug <slug>', 'override the migration folder slug (default: guarddog)')
-    .action(async (opts: { cwd?: string; slug?: string }) => {
-      const config = await discoverConfig(opts.cwd ?? process.cwd())
-      const result = await runMigrate({ config, ...(opts.slug !== undefined && { slug: opts.slug }) })
-      process.exit(result.ok ? 0 : 1)
-    })
+    .option('--drop-unmanaged', 'drop foreign/legacy policies on managed tables (cutover; reads the live DB)')
+    .option('--against <connection>', 'Postgres URL for --drop-unmanaged (falls back to GUARDDOG_DATABASE_URL)')
+    .option('--schema <name>', 'Postgres schema to inspect for --drop-unmanaged (default: public)')
+    .action(
+      async (opts: { cwd?: string; slug?: string; dropUnmanaged?: boolean; against?: string; schema?: string }) => {
+        const config = await discoverConfig(opts.cwd ?? process.cwd())
+        const databaseUrl = opts.against ?? process.env['GUARDDOG_DATABASE_URL']
+        const result = await runMigrate({
+          config,
+          ...(opts.slug !== undefined && { slug: opts.slug }),
+          ...(opts.dropUnmanaged === true && { dropUnmanaged: true }),
+          ...(databaseUrl !== undefined && { databaseUrl }),
+          ...(opts.schema !== undefined && { schema: opts.schema }),
+        })
+        process.exit(result.ok ? 0 : 1)
+      }
+    )
 
   program
     .command('emit')
@@ -93,6 +107,24 @@ async function main(): Promise<void> {
         url: opts.url,
         ...(opts.schema !== undefined && { schema: opts.schema }),
         ...(opts.out !== undefined && { out: opts.out }),
+      })
+      process.exit(result.ok ? 0 : 1)
+    })
+
+  program
+    .command('drift')
+    .description('Compare the schema’s declared policies against a live database and report drift (ADR-0029).')
+    .option('--cwd <path>', 'override the working directory used for config discovery')
+    .requiredOption('--against <connection>', 'Postgres connection string to compare against')
+    .option('--schema <name>', 'restrict to one Postgres schema (default: public)')
+    .option('--exit-code', 'exit non-zero when drift exists (CI gate)')
+    .action(async (opts: { cwd?: string; against: string; schema?: string; exitCode?: boolean }) => {
+      const config = await discoverConfig(opts.cwd ?? process.cwd())
+      const result = await runDrift({
+        config,
+        url: opts.against,
+        ...(opts.schema !== undefined && { schema: opts.schema }),
+        ...(opts.exitCode === true && { exitCode: true }),
       })
       process.exit(result.ok ? 0 : 1)
     })

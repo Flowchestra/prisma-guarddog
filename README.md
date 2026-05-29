@@ -84,6 +84,21 @@ export default defineSchema({
 
 `p.col` is the typed, model-scoped form; the standalone `col(...)` stays as the untyped escape hatch for dynamic/raw column names. Omit `models` and both stay unconstrained (`string`) — fully backward compatible.
 
+### Adopting onto a database with existing policies
+
+guarddog stamps every policy it creates with an ownership comment, so it can tell its policies from the hand-written ones already in your database. On adoption that matters: Postgres permissive policies **OR together**, so a leftover legacy policy silently *widens* access (a classic case: a `FOR ALL` policy that leaks soft-deleted rows surviving the cutover). See [ADR-0029](./docs/adr/0029-handling-existing-rls-policies.md).
+
+```sh
+# Report drift between the declared schema and a live database (read-only).
+# Flags foreign policies on guarddog-managed tables; permissive ones are access-wideners.
+guarddog drift --against "$DATABASE_URL"        # --exit-code to gate CI
+
+# Cut over: prepend DROP POLICY for foreign/legacy policies, then create guarddog's.
+guarddog migrate --drop-unmanaged --against "$DATABASE_URL"
+```
+
+Conservative by default — `migrate` never drops a foreign policy unless you pass `--drop-unmanaged`.
+
 ## Quickstart
 
 Packages publish to **GitHub Packages** under the `@flowchestra` scope. Two `.npmrc` lines are required — typically in your repo or `~/.npmrc`:

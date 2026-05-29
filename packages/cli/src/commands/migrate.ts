@@ -27,9 +27,11 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import { compileToState, diffStates, type Guarddog, type Op, type State } from '@flowchestra/prisma-guarddog-core'
+import { readPolicyInventory } from '@flowchestra/prisma-guarddog-importer-postgres'
 import pc from 'picocolors'
 
 import type { ResolvedConfig } from '../config.js'
+import { computePolicyDrift, driftToDropOps } from '../drift.js'
 import { loadSchema, SchemaLoadError } from '../load.js'
 import { renderOps, type RenderOverrides } from '../render-ops.js'
 import { formatSidecar, replayMigrationsDir, SIDECAR_FILENAME } from '../sidecar.js'
@@ -49,6 +51,18 @@ export interface MigrateOptions {
   readonly now?: () => Date
   /** When true (default), writes a colored summary to stdout. */
   readonly stdout?: boolean
+  /**
+   * Cutover (ADR-0029): when true (with `databaseUrl` set), read the live
+   * policy inventory and prepend `DROP POLICY` for every foreign /
+   * stale-managed policy on a managed table, so the migration removes legacy
+   * policies before creating guarddog's. Opt-in — never drops on the default
+   * path.
+   */
+  readonly dropUnmanaged?: boolean
+  /** Postgres URL to read live policies from; required when `dropUnmanaged` is set. */
+  readonly databaseUrl?: string
+  /** Postgres schema to inspect for `--drop-unmanaged` (default `public`). */
+  readonly schema?: string
 }
 
 export interface MigrateResult {
@@ -67,9 +81,16 @@ export interface MigrateResult {
  * — `compileHasGrant` and friends — into `renderOps`. `runMigrate` forwards
  * `config.renderOverrides` here; direct callers can pass their own.
  */
-export function planMigrate(guard: Guarddog, current: State, renderOverrides: RenderOverrides = {}): MigratePlan {
+export function planMigrate(
+  guard: Guarddog,
+  current: State,
+  renderOverrides: RenderOverrides = {},
+  // Ops prepended ahead of the computed diff — used by `--drop-unmanaged` to
+  // drop foreign/legacy policies before guarddog creates its own (ADR-0029).
+  leadingOps: ReadonlyArray<Op> = []
+): MigratePlan {
   const target = compileToState(guard)
-  const ops = diffStates(current, target)
+  const ops = Object.freeze([...leadingOps, ...diffStates(current, target)])
   const sql = renderOps(ops, {
     claims: guard.config.claims,
     ...(guard.config.resourceGrants !== undefined && { resourceGrants: guard.config.resourceGrants }),
@@ -77,6 +98,39 @@ export function planMigrate(guard: Guarddog, current: State, renderOverrides: Re
     ...renderOverrides,
   })
   return Object.freeze({ ops, sql, current, target })
+}
+
+/**
+ * Read the live policy inventory and compute the `DROP POLICY` ops for
+ * foreign / stale-managed policies on managed tables (the `--drop-unmanaged`
+ * cutover). Returns `[]` on any connection/read failure with a diagnostic, so
+ * a missing/unreachable DB degrades to "no extra drops" rather than aborting.
+ */
+async function computeDropUnmanagedOps(
+  guard: Guarddog,
+  databaseUrl: string,
+  schema: string
+): Promise<{ readonly ops: ReadonlyArray<Op>; readonly diagnostics: ReadonlyArray<string> }> {
+  let pgModule
+  try {
+    pgModule = (await import('pg')) as typeof import('pg')
+  } catch (err) {
+    return { ops: [], diagnostics: [`--drop-unmanaged: cannot load 'pg' (${(err as Error).message})`] }
+  }
+  const ClientCtor = (pgModule as unknown as { Client: typeof import('pg').Client }).Client
+  const client = new ClientCtor({ connectionString: databaseUrl })
+  try {
+    await client.connect()
+  } catch (err) {
+    return { ops: [], diagnostics: [`--drop-unmanaged: failed to connect: ${(err as Error).message}`] }
+  }
+  try {
+    const inventory = await readPolicyInventory(client, { schema })
+    const drift = computePolicyDrift(compileToState(guard), inventory)
+    return { ops: driftToDropOps(drift), diagnostics: [] }
+  } finally {
+    await client.end().catch(() => {})
+  }
 }
 
 export async function runMigrate(opts: MigrateOptions): Promise<MigrateResult> {
@@ -92,7 +146,23 @@ export async function runMigrate(opts: MigrateOptions): Promise<MigrateResult> {
   }
 
   const current = await replayMigrationsDir(config.migrationsDir)
-  const plan = planMigrate(loaded.guard, current, config.renderOverrides)
+
+  let leadingOps: ReadonlyArray<Op> = []
+  const diagnostics: string[] = []
+  if (opts.dropUnmanaged === true) {
+    if (opts.databaseUrl === undefined || opts.databaseUrl.length === 0) {
+      return failure('--drop-unmanaged requires a database URL (--against or GUARDDOG_DATABASE_URL)', writeStdout)
+    }
+    const dropPlan = await computeDropUnmanagedOps(loaded.guard, opts.databaseUrl, opts.schema ?? 'public')
+    leadingOps = dropPlan.ops
+    diagnostics.push(...dropPlan.diagnostics)
+  }
+
+  const plan = planMigrate(loaded.guard, current, config.renderOverrides, leadingOps)
+
+  if (writeStdout) {
+    for (const diag of diagnostics) process.stderr.write(`${pc.yellow('!')} ${diag}\n`)
+  }
 
   if (plan.ops.length === 0) {
     if (writeStdout) {
@@ -103,7 +173,7 @@ export async function runMigrate(opts: MigrateOptions): Promise<MigrateResult> {
       noChanges: true,
       migrationDir: undefined,
       opCount: 0,
-      diagnostics: Object.freeze([]),
+      diagnostics: Object.freeze([...diagnostics]),
     })
   }
 
@@ -130,7 +200,7 @@ export async function runMigrate(opts: MigrateOptions): Promise<MigrateResult> {
     noChanges: false,
     migrationDir,
     opCount: plan.ops.length,
-    diagnostics: Object.freeze([]),
+    diagnostics: Object.freeze([...diagnostics]),
   })
 }
 

@@ -44,6 +44,13 @@ import {
  * group-disjunctive grants), they supply a `compileHasGrant` here and it
  * wins over the source-based dispatch. See ADR-0024.
  */
+/**
+ * Catalog comment stamped on every guarddog-emitted policy (ADR-0029). The
+ * durable ownership record drift detection reads back to distinguish
+ * guarddog-managed policies from a consumer's foreign/legacy ones.
+ */
+export const GUARDDOG_POLICY_COMMENT = 'prisma-guarddog:managed'
+
 export interface RenderOverrides {
   readonly compileHasAppRole?: HasAppRoleCompiler
   readonly compileHasGrant?: HasGrantCompiler
@@ -233,6 +240,11 @@ function renderCreatePolicy(out: string[], policy: PolicyOpRecord, ctx: RenderCo
     (checkSql !== undefined ? ` WITH CHECK (${checkSql})` : '') +
     ';'
   out.push(stmt)
+  // Ownership marker (ADR-0029): stamps the policy as guarddog-managed in the
+  // catalog so drift detection (`check --against`) can tell guarddog's
+  // policies from a consumer's pre-existing/foreign ones, independent of the
+  // naming convention.
+  out.push(`COMMENT ON POLICY ${name} ON ${table} IS ${quoteString(GUARDDOG_POLICY_COMMENT)};`)
 }
 
 function verbDdl(verb: Verb | ColumnVerb): string {

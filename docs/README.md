@@ -72,6 +72,7 @@ All foundational decisions are captured as ADRs in [`adr/`](./adr/). Read [`adr/
 | 0010 | [Migrations colocate with Prisma](./adr/0010-migrations-colocate-with-prisma.md)                            |
 | 0020 | [Functional lifecycle over an Op-union state](./adr/0020-functional-lifecycle-over-op-union.md)             |
 | 0024 | [Config-threaded render overrides + ergonomics](./adr/0024-config-threaded-render-overrides.md)             |
+| 0029 | [Handling existing (foreign) RLS policies](./adr/0029-handling-existing-rls-policies.md)                     |
 
 ### Repo + extension model
 
