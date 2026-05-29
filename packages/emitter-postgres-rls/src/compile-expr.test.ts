@@ -45,6 +45,8 @@ const hasResourcePermission = (action: string, jsonbColumn: string): Expr =>
 const isOwner = (ownerColumn: string): Expr => Object.freeze({ kind: 'isOwner', ownerColumn }) as Expr
 const inArray = (needle: Expr, haystack: Expr): Expr => Object.freeze({ kind: 'inArray', needle, haystack }) as Expr
 const raw = (sql: string): Expr => Object.freeze({ kind: 'raw', sql }) as Expr
+const fn = (name: string, ...args: Expr[]): Expr =>
+  Object.freeze({ kind: 'fn', name, args: Object.freeze(args) }) as Expr
 
 describe('compileExpr — leaves', () => {
   it('compiles literals', () => {
@@ -537,5 +539,35 @@ describe('compileExpr — hasGrant with source: "table"', () => {
     const sql = compileExpr(hasGrant('EDITOR', 'workspaceId'), ctx)
     expect(sql).toContain('workspace_grants.group_id IN (SELECT org_group_members.group_id')
     expect(sql).toContain(`workspace_grants.role = ANY(ARRAY['EDITOR', 'OWNER'])`)
+  })
+})
+
+describe('compileExpr — fn (managed functions)', () => {
+  it('compiles p.fn() to schema-qualified call with compiled args', () => {
+    const ctx = baseCtx({ functionSchema: 'app' })
+    const sql = compileExpr(fn('has_grant', col('id'), claim('sub'), literal('OWNER')), ctx)
+    // safe lowercase identifiers are emitted bare (quoteIdent only quotes when needed)
+    expect(sql).toBe(
+      `app.has_grant(id, ((current_setting('request.jwt.claims', true)::json ->> 'sub'))::uuid, 'OWNER')`
+    )
+  })
+
+  it('quotes a schema/name that needs quoting', () => {
+    const sql = compileExpr(fn('hasGrant', col('id')), baseCtx({ functionSchema: 'App' }))
+    expect(sql).toBe('"App"."hasGrant"(id)')
+  })
+
+  it('compiles a zero-arg call', () => {
+    expect(compileExpr(fn('now_ish'), baseCtx({ functionSchema: 'app' }))).toBe('app.now_ish()')
+  })
+
+  it('nests fn calls', () => {
+    const ctx = baseCtx({ functionSchema: 'app' })
+    const sql = compileExpr(fn('outer', fn('inner', col('id'))), ctx)
+    expect(sql).toBe('app.outer(app.inner(id))')
+  })
+
+  it('throws when no functionSchema is configured', () => {
+    expect(() => compileExpr(fn('has_grant', col('id')), baseCtx())).toThrow(/no functions schema is configured/)
   })
 })

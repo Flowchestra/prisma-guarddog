@@ -15,6 +15,23 @@
  */
 
 import type { BinaryOp, Expr, LiteralValue } from './ast.js'
+import type { FunctionDefinition } from './function-defs.js'
+
+/**
+ * A value passable to `p.fn(...)`: a built expression (`col(...)`,
+ * `p.claim(...)`, etc.) or a SQL literal that gets wrapped automatically.
+ */
+export type FnArgValue = FluentExpr | string | number | boolean | null
+
+/**
+ * Map a function definition's `args` tuple to the call-arg tuple — same
+ * arity, each slot a `FnArgValue`. When the functions definition is
+ * `const`-captured (via `defineFunctions`), `TArgs` is a fixed tuple so
+ * arity is checked; with the default (unconstrained) it's a plain array so
+ * any number of args is accepted. Per-argument PG-type checking is out of
+ * scope — `FluentExpr` is untyped at the SQL level (ADR-0026).
+ */
+export type FnCallArgs<TArgs extends ReadonlyArray<unknown>> = { [K in keyof TArgs]: FnArgValue }
 
 /**
  * Wrapper around an `Expr` that adds fluent combinators. The `ast` is the
@@ -78,6 +95,15 @@ function binop(op: BinaryOp, left: FluentExpr, right: FluentExpr): FluentExpr {
 }
 
 /**
+ * Normalize a `p.fn(...)` argument into an `Expr`. A built `FluentExpr`
+ * contributes its `.ast`; a bare SQL literal (string/number/boolean/null) is
+ * wrapped as a `literal` node.
+ */
+function fnArgToExpr(arg: FnArgValue): Expr {
+  return arg instanceof FluentExpr ? arg.ast : (Object.freeze({ kind: 'literal', value: arg }) as Expr)
+}
+
+/**
  * Column reference. Top-level helper because `col('x')` reads more clearly
  * than `p.col('x')` at the call site and doesn't need to thread the predicate
  * builder type.
@@ -94,7 +120,11 @@ export function col(name: string): FluentExpr {
  * so that `p.claim(key)` is type-checked against the actual keys of the
  * configured claims.
  */
-export class PredicateBuilder<TClaims = Record<string, unknown>, TGrantTableKeys extends string = string> {
+export class PredicateBuilder<
+  TClaims = Record<string, unknown>,
+  TGrantTableKeys extends string = string,
+  TFunctions extends Record<string, FunctionDefinition> = Record<string, FunctionDefinition>,
+> {
   /**
    * Read a claim. The string key is constrained to the registered claim names.
    *
@@ -239,6 +269,23 @@ export class PredicateBuilder<TClaims = Record<string, unknown>, TGrantTableKeys
     return new FluentExpr(
       Object.freeze({ kind: 'hasResourcePermission', action, jsonbColumn: jsonbColumn.ast.column }) as Expr
     )
+  }
+
+  /**
+   * Call a guarddog-managed SQL function (ADR-0026). The `name` autocompletes
+   * against the functions declared via `defineFunctions`, and arity is checked
+   * (per-argument PG-type checking is out of scope — see `FnCallArgs`).
+   * Compiles to `<schema>.<name>(<arg>, ...)`; arguments may be expressions
+   * (`col(...)`, `p.claim(...)`, nested `p.fn(...)`) or SQL literals.
+   *
+   *   p.fn('user_has_workspace_grant', col('id'), p.claim('user_id'), 'MANAGER')
+   */
+  fn<K extends keyof TFunctions & string>(name: K, ...args: FnCallArgs<TFunctions[K]['args']>): FluentExpr {
+    if (name.length === 0) {
+      throw new Error('[prisma-guarddog] fn: function name must be a non-empty string.')
+    }
+    const exprArgs = (args as ReadonlyArray<FnArgValue>).map(fnArgToExpr)
+    return new FluentExpr(Object.freeze({ kind: 'fn', name, args: Object.freeze(exprArgs) }) as Expr)
   }
 
   /**

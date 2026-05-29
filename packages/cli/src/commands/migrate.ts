@@ -73,6 +73,7 @@ export function planMigrate(guard: Guarddog, current: State, renderOverrides: Re
   const sql = renderOps(ops, {
     claims: guard.config.claims,
     ...(guard.config.resourceGrants !== undefined && { resourceGrants: guard.config.resourceGrants }),
+    ...(guard.config.functions !== undefined && { functionSchema: guard.config.functions.schema }),
     ...renderOverrides,
   })
   return Object.freeze({ ops, sql, current, target })

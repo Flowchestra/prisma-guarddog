@@ -62,6 +62,13 @@ export type Expr =
   | { readonly kind: 'hasResourcePermission'; readonly action: string; readonly jsonbColumn: string }
   | { readonly kind: 'isOwner'; readonly ownerColumn: string }
   | { readonly kind: 'inArray'; readonly needle: Expr; readonly haystack: Expr }
+  /**
+   * Call to a guarddog-managed SQL function (ADR-0026). Compiles to
+   * `<schema>.<name>(<compiled args>)`. `args` are already normalized to
+   * Exprs (literals wrapped). The schema + name resolution happens at emit
+   * time against the configured `defineFunctions`.
+   */
+  | { readonly kind: 'fn'; readonly name: string; readonly args: ReadonlyArray<Expr> }
   | { readonly kind: 'raw'; readonly sql: string }
 
 /**

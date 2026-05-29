@@ -46,6 +46,13 @@ export interface ExprCompileCtx {
    */
   readonly resourceGrants?: ResourceGrantsDefinition
   /**
+   * Target schema for guarddog-managed functions (ADR-0026). Required to
+   * compile `p.fn(name, ...)` — the call renders as `<schema>.<name>(...)`.
+   * Set by the emitter from `defineFunctions({ schema })`. Undefined when no
+   * functions are declared; a `p.fn(...)` then throws at compile time.
+   */
+  readonly functionSchema?: string
+  /**
    * Override `p.hasAppRole(role)` compilation. Default checks containment
    * in the `roles` claim via jsonb `?` operator.
    */
@@ -128,6 +135,16 @@ export function compileExpr(expr: Expr, ctx: ExprCompileCtx): string {
     }
     case 'inArray':
       return `(${compileExpr(expr.haystack, ctx)} ? (${compileExpr(expr.needle, ctx)})::text)`
+    case 'fn': {
+      if (ctx.functionSchema === undefined || ctx.functionSchema.length === 0) {
+        throw new Error(
+          `[prisma-guarddog/emitter-postgres-rls] compileExpr: p.fn("${expr.name}") used but no functions schema is configured. ` +
+            'Declare functions via defineFunctions and pass them on schema.functions / GuarddogConfig.functions.'
+        )
+      }
+      const args = expr.args.map((a) => compileExpr(a, ctx)).join(', ')
+      return `${quoteIdent(ctx.functionSchema)}.${quoteIdent(expr.name)}(${args})`
+    }
     case 'raw':
       // Raw is wrapped in parens to compose safely as a sub-expression.
       return `(${expr.sql})`

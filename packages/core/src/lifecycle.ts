@@ -31,12 +31,16 @@ import type {
   Verb,
 } from './ast.js'
 import type { DbRolesDefinition } from './db-roles.js'
+import { type FunctionDefinition, type FunctionsDefinition, orderFunctions } from './function-defs.js'
 import { defaultTableResolver, policyName } from './naming.js'
 import {
   applyOps,
   type ColumnGrantRecord,
   type ColumnVerb,
   empty,
+  type FunctionArgRecord,
+  functionKey,
+  type FunctionOpRecord,
   type Op,
   type PolicyOpRecord,
   type RoleMembershipRecord,
@@ -65,6 +69,8 @@ export interface GuarddogLike {
   getPolymorphics(): readonly PolymorphicAst[]
   getColumnPrivileges(): readonly ColumnPrivilegeAst[]
   getNoPolicies(): readonly NoPolicyAst[]
+  /** Optional (ADR-0026). Absent on Guarddog-likes that predate managed functions. */
+  getFunctions?(): FunctionsDefinition | undefined
 }
 
 /** Used by lint/coverage to distinguish "covered" models from gaps. */
@@ -84,11 +90,15 @@ export function compileToOps(guard: GuarddogLike, opts: CompileOptions = {}): re
   const resolveTable = opts.resolveTable ?? defaultTableResolver
 
   const roleOps: Op[] = []
+  const schemaOps: Op[] = []
+  const functionOps: Op[] = []
+  const executeGrantOps: Op[] = []
   const policyOps: Op[] = []
   const columnGrantOps: Op[] = []
   const rlsTables = new Set<string>()
 
   appendRoleOps(roleOps, guard)
+  appendFunctionOps(schemaOps, functionOps, executeGrantOps, guard)
   appendPolicyOps(policyOps, guard, resolveTable, rlsTables)
   appendPolymorphicOps(policyOps, guard, resolveTable, rlsTables)
   appendColumnPrivilegeOps(columnGrantOps, guard, resolveTable)
@@ -96,7 +106,15 @@ export function compileToOps(guard: GuarddogLike, opts: CompileOptions = {}): re
   const rlsOps: Op[] = []
   appendRlsOps(rlsOps, rlsTables)
 
-  return Object.freeze([...roleOps, ...rlsOps, ...policyOps, ...columnGrantOps])
+  return Object.freeze([
+    ...roleOps,
+    ...schemaOps,
+    ...functionOps,
+    ...executeGrantOps,
+    ...rlsOps,
+    ...policyOps,
+    ...columnGrantOps,
+  ])
 }
 
 /**
@@ -111,38 +129,56 @@ export function compileToState(guard: GuarddogLike, opts: CompileOptions = {}): 
  * Produce the minimal Op sequence transforming `current` into `target`.
  * Op ordering is engineered for safe replay:
  *
- *   1. drop policies (before disable-rls, before drop-role)
+ *   1. drop policies (before the functions they call, before disable-rls/drop-role)
  *   2. revoke column grants
- *   3. revoke role memberships
- *   4. unforce / disable RLS for tables no longer policied
- *   5. drop roles (after all dependents are gone)
- *   6. create roles
- *   7. grant role memberships
- *   8. enable / force RLS for newly-policied tables
- *   9. create policies
- *  10. grant column grants
+ *   3. revoke EXECUTE grants
+ *   4. drop functions (after the policies that call them are gone)
+ *   5. revoke role memberships
+ *   6. unforce / disable RLS for tables no longer policied
+ *   7. drop roles (after all dependents are gone)
+ *   8. create roles
+ *   9. create schemas, then functions (dependency-ordered)
+ *  10. grant EXECUTE (after roles + functions exist)
+ *  11. grant role memberships
+ *  12. enable / force RLS for newly-policied tables
+ *  13. create policies (after the functions they call exist)
+ *  14. grant column grants
  *
  * Drop-then-recreate semantics for policy mutations (Postgres
  * `ALTER POLICY` only supports a subset of changes; we always emit a clean
  * pair instead, matching the idempotency pattern the emitter uses).
+ * Functions use the same drop+recreate pattern on a signature change and
+ * `CREATE OR REPLACE` for body/attribute-only changes — see `diffFunctions`.
  */
 export function diffStates(current: State, target: State): readonly Op[] {
   // Drop phase: tear down dependents before their dependencies.
   const dropPolicies: Op[] = []
   const dropColumnGrants: Op[] = []
+  const revokeExecute: Op[] = []
+  const dropFunctions: Op[] = []
   const dropMemberships: Op[] = []
   const rlsRemovals: Op[] = []
   const dropRoles: Op[] = []
 
   // Add phase: bring dependencies up before dependents.
   const addRoles: Op[] = []
+  const addSchemas: Op[] = []
+  const addFunctions: Op[] = []
+  const addExecute: Op[] = []
   const addMemberships: Op[] = []
   const rlsAdds: Op[] = []
   const addPolicies: Op[] = []
   const addColumnGrants: Op[] = []
 
+  // Functions dropped+recreated due to a signature change. Their grants are
+  // wiped by the DROP, so they must be re-granted (and their stale grants must
+  // NOT be revoked — the object is already gone).
+  const recreated = new Set<string>()
+
   diffPolicies(current, target, dropPolicies, addPolicies)
   diffColumnGrants(current, target, dropColumnGrants, addColumnGrants)
+  diffFunctions(current, target, dropFunctions, addSchemas, addFunctions, recreated)
+  diffFunctionGrants(current, target, revokeExecute, addExecute, recreated)
   diffRoleMemberships(current, target, dropMemberships)
   diffRoleMembershipAdds(current, target, addMemberships)
   diffRlsRemovals(current, target, rlsRemovals)
@@ -152,10 +188,15 @@ export function diffStates(current: State, target: State): readonly Op[] {
   return Object.freeze([
     ...dropPolicies,
     ...dropColumnGrants,
+    ...revokeExecute,
+    ...dropFunctions,
     ...dropMemberships,
     ...rlsRemovals,
     ...dropRoles,
     ...addRoles,
+    ...addSchemas,
+    ...addFunctions,
+    ...addExecute,
     ...addMemberships,
     ...rlsAdds,
     ...addPolicies,
@@ -188,6 +229,61 @@ function appendRoleOps(out: Op[], guard: GuarddogLike): void {
       out.push({ kind: 'grant-role-membership', parent, child })
     }
   }
+}
+
+/**
+ * Emit the schema-create, function-create, and execute-grant ops for the
+ * guarddog-managed functions (ADR-0026). Functions are emitted in
+ * dependency order (via `orderFunctions`) so a dependent never precedes the
+ * function it calls — this ordering is preserved in the target State's
+ * insertion order and relied on by `diffFunctions` for safe replay.
+ */
+function appendFunctionOps(schemaOut: Op[], fnOut: Op[], grantOut: Op[], guard: GuarddogLike): void {
+  const defn = guard.getFunctions?.()
+  if (defn === undefined) return
+  schemaOut.push({ kind: 'create-schema', schema: defn.schema })
+  for (const { name, fn } of orderFunctions(defn)) {
+    const argTypes = fn.args.map((a) => a.type)
+    fnOut.push({ kind: 'create-function', fn: toFunctionOpRecord(defn.schema, name, fn) })
+    for (const role of [...(fn.grants?.execute ?? [])].toSorted()) {
+      grantOut.push({ kind: 'grant-execute', schema: defn.schema, name, role, argTypes })
+    }
+  }
+}
+
+function toFunctionOpRecord(schema: string, name: string, fn: FunctionDefinition): FunctionOpRecord {
+  const args: ReadonlyArray<FunctionArgRecord> = Object.freeze(
+    fn.args.map((a) => Object.freeze({ name: a.name, type: a.type, default: a.default }))
+  )
+  return Object.freeze({
+    schema,
+    name,
+    args,
+    returns: fn.returns,
+    language: fn.language ?? 'sql',
+    volatility: fn.volatility ?? 'volatile',
+    parallel: fn.parallel ?? 'unsafe',
+    security: fn.security ?? 'invoker',
+    searchPath: Object.freeze([...(fn.searchPath ?? [])]),
+    body: fn.body,
+    signature: functionSignature(schema, name, args, fn.returns),
+  })
+}
+
+/**
+ * The parts of a function `CREATE OR REPLACE` cannot change: arg names, arg
+ * types (in order), and the return type. A difference here forces a
+ * DROP+CREATE in the diff. Defaults and the body are intentionally excluded —
+ * those a `CREATE OR REPLACE` handles in place.
+ */
+function functionSignature(
+  schema: string,
+  name: string,
+  args: ReadonlyArray<FunctionArgRecord>,
+  returns: string
+): string {
+  const sig = args.map((a) => `${a.name} ${a.type}`).join(', ')
+  return `${schema}.${name}(${sig}) -> ${returns}`
 }
 
 function appendPolicyOps(
@@ -454,6 +550,91 @@ function diffColumnGrants(current: State, target: State, drops: Op[], adds: Op[]
   }
 }
 
+/**
+ * Signature-aware function diffing (ADR-0026):
+ *
+ *   - present in target, absent in current        → CREATE (OR REPLACE)
+ *   - present in current, absent in target         → DROP
+ *   - present in both, signature changed           → DROP + CREATE (recreated)
+ *   - present in both, only body/attrs changed     → CREATE OR REPLACE
+ *
+ * Drops run in reverse target-insertion / current-insertion order and creates
+ * in forward target-insertion order, which (because compileToOps emits in
+ * dependency order) keeps dependents and dependencies on the right side of
+ * each other. Schemas are create-only — never dropped, since a schema can hold
+ * objects guarddog doesn't manage.
+ */
+function diffFunctions(
+  current: State,
+  target: State,
+  drops: Op[],
+  addSchemas: Op[],
+  adds: Op[],
+  recreated: Set<string>
+): void {
+  for (const schema of [...target.schemas].toSorted()) {
+    if (!current.schemas.has(schema)) addSchemas.push({ kind: 'create-schema', schema })
+  }
+
+  // Drops in reverse dependency order (reverse of current insertion order).
+  for (const key of [...current.functions.keys()].toReversed()) {
+    const c = current.functions.get(key)!
+    const t = target.functions.get(key)
+    const argTypes = c.args.map((a) => a.type)
+    if (t === undefined) {
+      drops.push({ kind: 'drop-function', schema: c.schema, name: c.name, argTypes })
+    } else if (c.signature !== t.signature) {
+      drops.push({ kind: 'drop-function', schema: c.schema, name: c.name, argTypes })
+      recreated.add(key)
+    }
+  }
+
+  // Creates / replaces in forward dependency order (target insertion order).
+  for (const [key, t] of target.functions) {
+    const c = current.functions.get(key)
+    if (c === undefined || recreated.has(key) || !functionRecordsEqual(c, t)) {
+      adds.push({ kind: 'create-function', fn: t })
+    }
+  }
+}
+
+function diffFunctionGrants(current: State, target: State, revokes: Op[], grants: Op[], recreated: Set<string>): void {
+  for (const key of [...current.functionGrants.keys()].toSorted()) {
+    if (target.functionGrants.has(key)) continue
+    const g = current.functionGrants.get(key)!
+    const fnKey = functionKey(g.schema, g.name)
+    // If the function is being dropped or recreated, the DROP already removed
+    // its grants — an explicit REVOKE would be redundant (or hit a stale
+    // signature). Skip it.
+    if (recreated.has(fnKey) || !target.functions.has(fnKey)) continue
+    revokes.push({ kind: 'revoke-execute', schema: g.schema, name: g.name, role: g.role, argTypes: g.argTypes })
+  }
+  for (const key of [...target.functionGrants.keys()].toSorted()) {
+    const g = target.functionGrants.get(key)!
+    const fnRecreated = recreated.has(functionKey(g.schema, g.name))
+    if (!current.functionGrants.has(key) || fnRecreated) {
+      grants.push({ kind: 'grant-execute', schema: g.schema, name: g.name, role: g.role, argTypes: g.argTypes })
+    }
+  }
+}
+
+function functionRecordsEqual(a: FunctionOpRecord, b: FunctionOpRecord): boolean {
+  if (a.signature !== b.signature) return false
+  if (a.language !== b.language) return false
+  if (a.volatility !== b.volatility) return false
+  if (a.parallel !== b.parallel) return false
+  if (a.security !== b.security) return false
+  if (a.body !== b.body) return false
+  if (a.searchPath.length !== b.searchPath.length) return false
+  for (let i = 0; i < a.searchPath.length; i++) if (a.searchPath[i] !== b.searchPath[i]) return false
+  if (a.args.length !== b.args.length) return false
+  for (let i = 0; i < a.args.length; i++) {
+    // names + types are in the signature; only `default` is still uncompared.
+    if (a.args[i]!.default !== b.args[i]!.default) return false
+  }
+  return true
+}
+
 function diffRoleMemberships(current: State, target: State, drops: Op[]): void {
   for (const key of [...current.roleMemberships.keys()].toSorted()) {
     if (!target.roleMemberships.has(key)) {
@@ -557,7 +738,7 @@ function exprEqual(a: Expr | undefined, b: Expr | undefined): boolean {
       return (b as typeof a).role === a.role
     case 'hasGrant': {
       const bb = b as typeof a
-      return bb.action === a.action && bb.scopeColumn === a.scopeColumn
+      return bb.action === a.action && bb.scopeColumn === a.scopeColumn && bb.tableHint === a.tableHint
     }
     case 'hasResourcePermission': {
       const bb = b as typeof a
@@ -568,6 +749,14 @@ function exprEqual(a: Expr | undefined, b: Expr | undefined): boolean {
     case 'inArray': {
       const bb = b as typeof a
       return exprEqual(a.needle, bb.needle) && exprEqual(a.haystack, bb.haystack)
+    }
+    case 'fn': {
+      const bb = b as typeof a
+      if (bb.name !== a.name || a.args.length !== bb.args.length) return false
+      for (let i = 0; i < a.args.length; i++) {
+        if (!exprEqual(a.args[i], bb.args[i])) return false
+      }
+      return true
     }
     case 'raw':
       return (b as typeof a).sql === a.sql

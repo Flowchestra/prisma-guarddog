@@ -33,6 +33,17 @@ export type {
   ResourceGrantsSource,
 } from './resource-grants.js'
 
+export { defineFunctions, orderFunctions } from './function-defs.js'
+export type {
+  FunctionArg,
+  FunctionDefinition,
+  FunctionLanguage,
+  FunctionParallel,
+  FunctionSecurity,
+  FunctionsDefinition,
+  FunctionVolatility,
+} from './function-defs.js'
+
 export { defineSchema, materializeSchema } from './schema.js'
 export type { SchemaDefinition } from './schema.js'
 
@@ -63,10 +74,21 @@ export type {
 
 export { defaultTableResolver, policyName, snakeCase } from './naming.js'
 
-export { applyOps, columnGrantKey, empty, policyMapKey, roleMembershipKey } from './ops.js'
+export {
+  applyOps,
+  columnGrantKey,
+  empty,
+  functionGrantKey,
+  functionKey,
+  policyMapKey,
+  roleMembershipKey,
+} from './ops.js'
 export type {
   ColumnGrantRecord,
   ColumnVerb,
+  FunctionArgRecord,
+  FunctionGrantRecord,
+  FunctionOpRecord,
   Op,
   PolicyOpRecord,
   RoleMembershipRecord,

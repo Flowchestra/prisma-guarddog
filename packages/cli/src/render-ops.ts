@@ -19,6 +19,7 @@
 import type {
   ClaimsDefinition,
   ColumnVerb,
+  FunctionOpRecord,
   Op,
   PolicyOpRecord,
   ResourceGrantsDefinition,
@@ -53,6 +54,12 @@ export interface RenderOverrides {
 export interface RenderContext extends RenderOverrides {
   readonly claims: ClaimsDefinition
   readonly resourceGrants?: ResourceGrantsDefinition
+  /**
+   * Target schema for guarddog-managed functions (ADR-0026). Threaded into
+   * the predicate compile context so `p.fn(name, ...)` renders as
+   * `<schema>.<name>(...)`. Undefined when no functions are declared.
+   */
+  readonly functionSchema?: string
 }
 
 /**
@@ -61,11 +68,15 @@ export interface RenderContext extends RenderOverrides {
  */
 export function renderOps(ops: ReadonlyArray<Op>, ctx: RenderContext): readonly string[] {
   const out: string[] = []
-  for (const op of ops) renderOp(out, op, ctx)
+  // Tracks `${schema}::${role}` pairs for which a `GRANT USAGE ON SCHEMA` has
+  // already been emitted in this render, so a role with EXECUTE on several
+  // functions in the same schema gets one USAGE grant, not one per function.
+  const seenSchemaUsage = new Set<string>()
+  for (const op of ops) renderOp(out, op, ctx, seenSchemaUsage)
   return Object.freeze(out)
 }
 
-function renderOp(out: string[], op: Op, ctx: RenderContext): void {
+function renderOp(out: string[], op: Op, ctx: RenderContext, seenSchemaUsage: Set<string>): void {
   switch (op.kind) {
     case 'enable-rls':
       out.push(`ALTER TABLE ${quoteIdent(op.table)} ENABLE ROW LEVEL SECURITY;`)
@@ -107,7 +118,85 @@ function renderOp(out: string[], op: Op, ctx: RenderContext): void {
     case 'revoke-role-membership':
       out.push(renderRevokeMembership(op.parent, op.child))
       return
+    case 'create-schema':
+      out.push(`CREATE SCHEMA IF NOT EXISTS ${quoteIdent(op.schema)};`)
+      return
+    case 'create-function':
+      out.push(renderCreateFunction(op.fn))
+      return
+    case 'drop-function':
+      out.push(`DROP FUNCTION IF EXISTS ${functionRef(op.schema, op.name, op.argTypes)};`)
+      return
+    case 'grant-execute': {
+      // EXECUTE on a function is useless without USAGE on its schema; emit the
+      // USAGE grant once per (schema, role). GRANT USAGE is idempotent, so
+      // re-running the migration is safe.
+      const usageKey = `${op.schema}::${op.role}`
+      if (!seenSchemaUsage.has(usageKey)) {
+        seenSchemaUsage.add(usageKey)
+        out.push(`GRANT USAGE ON SCHEMA ${quoteIdent(op.schema)} TO ${quoteIdent(op.role)};`)
+      }
+      out.push(`GRANT EXECUTE ON FUNCTION ${functionRef(op.schema, op.name, op.argTypes)} TO ${quoteIdent(op.role)};`)
+      return
+    }
+    case 'revoke-execute':
+      out.push(
+        `REVOKE EXECUTE ON FUNCTION ${functionRef(op.schema, op.name, op.argTypes)} FROM ${quoteIdent(op.role)};`
+      )
+      return
   }
+}
+
+/**
+ * `"schema"."name"(type1, type2)` — the signature form Postgres uses to
+ * identify a function for DROP / GRANT / REVOKE. Argument types are inserted
+ * verbatim (they're trusted, declared in `defineFunctions`).
+ */
+function functionRef(schema: string, name: string, argTypes: ReadonlyArray<string>): string {
+  return `${quoteIdent(schema)}.${quoteIdent(name)}(${argTypes.join(', ')})`
+}
+
+/**
+ * Render `CREATE OR REPLACE FUNCTION` DDL from a {@link FunctionOpRecord}.
+ * EXECUTE grants are emitted separately (as grant-execute ops) so a grant
+ * change on an otherwise-unchanged function diffs cleanly. Idempotent:
+ * CREATE OR REPLACE is natively re-runnable; a signature change is handled by
+ * a preceding drop-function op.
+ */
+function renderCreateFunction(fn: FunctionOpRecord): string {
+  const args = fn.args
+    .map((a) => `${quoteIdent(a.name)} ${a.type}${a.default !== undefined ? ` DEFAULT ${a.default}` : ''}`)
+    .join(', ')
+  const header = `CREATE OR REPLACE FUNCTION ${quoteIdent(fn.schema)}.${quoteIdent(fn.name)}(${args})`
+
+  const clauses = [
+    `RETURNS ${fn.returns}`,
+    `LANGUAGE ${fn.language}`,
+    fn.volatility.toUpperCase(),
+    `PARALLEL ${fn.parallel.toUpperCase()}`,
+    `SECURITY ${fn.security.toUpperCase()}`,
+  ]
+  if (fn.searchPath.length > 0) {
+    clauses.push(`SET search_path TO ${fn.searchPath.map((p) => quoteIdent(p)).join(', ')}`)
+  }
+
+  const tag = dollarQuoteTag(fn.body)
+  return `${header}\n${clauses.join('\n')}\nAS ${tag}\n${fn.body}\n${tag};`
+}
+
+/**
+ * Pick a dollar-quote tag that does not occur in the body so the body is
+ * emitted verbatim with no escaping. Starts at `$guarddog$` and appends an
+ * incrementing suffix until it's collision-free.
+ */
+function dollarQuoteTag(body: string): string {
+  let tag = '$guarddog$'
+  let n = 0
+  while (body.includes(tag)) {
+    n += 1
+    tag = `$guarddog${n}$`
+  }
+  return tag
 }
 
 function renderCreatePolicy(out: string[], policy: PolicyOpRecord, ctx: RenderContext): void {
@@ -126,6 +215,7 @@ function renderCreatePolicy(out: string[], policy: PolicyOpRecord, ctx: RenderCo
     qualifyColumns: policy.discriminator !== undefined,
     claims: ctx.claims,
     ...(ctx.resourceGrants !== undefined && { resourceGrants: ctx.resourceGrants }),
+    ...(ctx.functionSchema !== undefined && { functionSchema: ctx.functionSchema }),
     ...(ctx.compileHasAppRole !== undefined && { compileHasAppRole: ctx.compileHasAppRole }),
     ...(ctx.compileHasGrant !== undefined && { compileHasGrant: ctx.compileHasGrant }),
     ...(ctx.compileHasResourcePermission !== undefined && {

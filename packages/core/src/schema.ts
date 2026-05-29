@@ -36,6 +36,7 @@
 import type { AppRolesDefinition } from './app-roles.js'
 import type { ClaimsDefinition, ClaimsShape } from './claims.js'
 import type { DbRolesDefinition } from './db-roles.js'
+import type { FunctionDefinition, FunctionsDefinition } from './function-defs.js'
 import { Guarddog } from './guarddog.js'
 import type { ResourceGrantsDefinition } from './resource-grants.js'
 import type { ResourceTreeDefinition } from './resources.js'
@@ -52,6 +53,7 @@ export interface SchemaDefinition<
   TResources extends string = string,
   TActions extends string = string,
   TGrantTableKeys extends string = string,
+  TFunctions extends Record<string, FunctionDefinition> = Record<string, FunctionDefinition>,
 > {
   readonly claims: ClaimsDefinition<TClaimsShape>
   readonly dbRoles: DbRolesDefinition<TDbRoles>
@@ -60,16 +62,25 @@ export interface SchemaDefinition<
   /** Optional layer-3 declaration. Required only if any policy uses `p.hasGrant(...)`. */
   readonly resourceGrants?: ResourceGrantsDefinition<TActions, TGrantTableKeys>
   /**
+   * Optional guarddog-managed SQL functions (ADR-0026). Required only if any
+   * policy uses `p.fn(...)`. The function-name union flows to the policies
+   * callback so `p.fn(name, ...)` autocompletes and arity is checked.
+   */
+  readonly functions?: FunctionsDefinition<TFunctions>
+  /**
    * Policy authoring callback. Receives a Guarddog instance with the four
-   * primitives + resourceGrants already wired. The callback registers
-   * policies via `guard.model(...).policy(...)`, `guard.polymorphic(...)`,
-   * `guard.noPolicy(...)`, etc. The grant-table key union flows here so
-   * `p.hasGrant(..., { table })` autocompletes (ADR-0025 / #12).
+   * primitives + resourceGrants + functions already wired. The callback
+   * registers policies via `guard.model(...).policy(...)`,
+   * `guard.polymorphic(...)`, `guard.noPolicy(...)`, etc. The grant-table key
+   * union flows here so `p.hasGrant(..., { table })` autocompletes (ADR-0025 /
+   * #12); the function-name union flows for `p.fn(...)` (ADR-0026 / #15).
    *
    * Called exactly once per `materializeSchema` invocation. Should be
    * referentially transparent — no side effects, no I/O.
    */
-  readonly policies: (guard: Guarddog<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions, TGrantTableKeys>) => void
+  readonly policies: (
+    guard: Guarddog<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions, TGrantTableKeys, TFunctions>
+  ) => void
 }
 
 /**
@@ -88,9 +99,10 @@ export function defineSchema<
   TResources extends string,
   TActions extends string = string,
   TGrantTableKeys extends string = string,
+  TFunctions extends Record<string, FunctionDefinition> = Record<string, FunctionDefinition>,
 >(
-  schema: SchemaDefinition<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions, TGrantTableKeys>
-): SchemaDefinition<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions, TGrantTableKeys> {
+  schema: SchemaDefinition<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions, TGrantTableKeys, TFunctions>
+): SchemaDefinition<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions, TGrantTableKeys, TFunctions> {
   return Object.freeze({ ...schema })
 }
 
@@ -110,15 +122,17 @@ export function materializeSchema<
   TResources extends string,
   TActions extends string,
   TGrantTableKeys extends string = string,
+  TFunctions extends Record<string, FunctionDefinition> = Record<string, FunctionDefinition>,
 >(
-  schema: SchemaDefinition<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions, TGrantTableKeys>
-): Guarddog<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions, TGrantTableKeys> {
-  const guard = new Guarddog<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions, TGrantTableKeys>({
+  schema: SchemaDefinition<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions, TGrantTableKeys, TFunctions>
+): Guarddog<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions, TGrantTableKeys, TFunctions> {
+  const guard = new Guarddog<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions, TGrantTableKeys, TFunctions>({
     claims: schema.claims,
     dbRoles: schema.dbRoles,
     appRoles: schema.appRoles,
     resources: schema.resources,
     ...(schema.resourceGrants !== undefined && { resourceGrants: schema.resourceGrants }),
+    ...(schema.functions !== undefined && { functions: schema.functions }),
   })
   schema.policies(guard)
   return guard

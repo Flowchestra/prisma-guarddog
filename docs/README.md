@@ -58,6 +58,7 @@ All foundational decisions are captured as ADRs in [`adr/`](./adr/). Read [`adr/
 | 0022 | [Rank-based grant tables (roleColumn + roleHierarchy)](./adr/0022-rank-based-grant-tables.md)                |
 | 0023 | [Grant principal disjunction (user OR group)](./adr/0023-grant-principal-disjunction.md)                     |
 | 0025 | [hasGrant per-call table hint](./adr/0025-hasgrant-per-call-table-hint.md)                                   |
+| 0026 | [guarddog-managed SQL functions (defineFunctions)](./adr/0026-managed-sql-functions.md)                      |
 
 ### Migration + state
 

@@ -14,9 +14,59 @@
  */
 
 import type { Expr, Verb } from './ast.js'
+import type { FunctionLanguage, FunctionParallel, FunctionSecurity, FunctionVolatility } from './function-defs.js'
 
 /** Subset of verbs that have column-level granularity (no DELETE). */
 export type ColumnVerb = 'select' | 'insert' | 'update'
+
+/**
+ * One resolved function argument. Defaults applied (no `undefined` enum
+ * fields) so the record is the single source of truth for emission + diffing.
+ */
+export interface FunctionArgRecord {
+  readonly name: string
+  readonly type: string
+  readonly default: string | undefined
+}
+
+/**
+ * Snapshot of one guarddog-managed SQL function (ADR-0026), keyed in
+ * {@link State} by {@link functionKey}(schema, name). Carries the fully
+ * resolved definition (defaults applied) plus a normalized `signature` string
+ * the diff engine uses to decide DROP+CREATE (signature change) vs
+ * CREATE OR REPLACE (body / attribute change only). EXECUTE grants are
+ * tracked separately as {@link ColumnGrantRecord}-style records.
+ */
+export interface FunctionOpRecord {
+  readonly schema: string
+  readonly name: string
+  readonly args: ReadonlyArray<FunctionArgRecord>
+  readonly returns: string
+  readonly language: FunctionLanguage
+  readonly volatility: FunctionVolatility
+  readonly parallel: FunctionParallel
+  readonly security: FunctionSecurity
+  readonly searchPath: ReadonlyArray<string>
+  readonly body: string
+  /**
+   * `schema.name(argType, ...) -> returns` — the parts Postgres won't let
+   * `CREATE OR REPLACE` change. A difference here forces DROP+CREATE.
+   */
+  readonly signature: string
+}
+
+export interface FunctionGrantRecord {
+  readonly schema: string
+  readonly name: string
+  readonly role: string
+  /**
+   * The function's argument types, in order — Postgres identifies a function
+   * by its full signature, so `GRANT EXECUTE ON FUNCTION` needs them. Carried
+   * on the record (rather than looked up from {@link State.functions}) so the
+   * renderer can emit from the op alone.
+   */
+  readonly argTypes: ReadonlyArray<string>
+}
 
 /**
  * Snapshot of one declared policy, keyed in {@link State} by `${table}::${name}`.
@@ -79,6 +129,28 @@ export type Op =
   | { readonly kind: 'drop-role'; readonly name: string }
   | { readonly kind: 'grant-role-membership'; readonly parent: string; readonly child: string }
   | { readonly kind: 'revoke-role-membership'; readonly parent: string; readonly child: string }
+  | { readonly kind: 'create-schema'; readonly schema: string }
+  | { readonly kind: 'create-function'; readonly fn: FunctionOpRecord }
+  | {
+      readonly kind: 'drop-function'
+      readonly schema: string
+      readonly name: string
+      readonly argTypes: ReadonlyArray<string>
+    }
+  | {
+      readonly kind: 'grant-execute'
+      readonly schema: string
+      readonly name: string
+      readonly role: string
+      readonly argTypes: ReadonlyArray<string>
+    }
+  | {
+      readonly kind: 'revoke-execute'
+      readonly schema: string
+      readonly name: string
+      readonly role: string
+      readonly argTypes: ReadonlyArray<string>
+    }
 
 /**
  * Declared-state snapshot. Forward-replay friendly: `applyOps(empty(), ops)`
@@ -95,6 +167,12 @@ export interface State {
   readonly roles: ReadonlyMap<string, RoleRecord>
   /** Keyed by {@link roleMembershipKey}(parent, child). */
   readonly roleMemberships: ReadonlyMap<string, RoleMembershipRecord>
+  /** Function schemas guarddog ensures exist (`CREATE SCHEMA IF NOT EXISTS`). */
+  readonly schemas: ReadonlySet<string>
+  /** Keyed by {@link functionKey}(schema, name). */
+  readonly functions: ReadonlyMap<string, FunctionOpRecord>
+  /** Keyed by {@link functionGrantKey}(schema, name, role). */
+  readonly functionGrants: ReadonlyMap<string, FunctionGrantRecord>
 }
 
 interface MutableState {
@@ -104,6 +182,9 @@ interface MutableState {
   columnGrants: Map<string, ColumnGrantRecord>
   roles: Map<string, RoleRecord>
   roleMemberships: Map<string, RoleMembershipRecord>
+  schemas: Set<string>
+  functions: Map<string, FunctionOpRecord>
+  functionGrants: Map<string, FunctionGrantRecord>
 }
 
 /** Empty starting point for forward-replay. */
@@ -115,6 +196,9 @@ export function empty(): State {
     columnGrants: new Map(),
     roles: new Map(),
     roleMemberships: new Map(),
+    schemas: new Set(),
+    functions: new Map(),
+    functionGrants: new Map(),
   })
 }
 
@@ -130,6 +214,9 @@ export function applyOps(state: State, ops: ReadonlyArray<Op>): State {
     columnGrants: new Map(state.columnGrants),
     roles: new Map(state.roles),
     roleMemberships: new Map(state.roleMemberships),
+    schemas: new Set(state.schemas),
+    functions: new Map(state.functions),
+    functionGrants: new Map(state.functionGrants),
   }
   for (const op of ops) applyOp(next, op)
   return freezeState(next)
@@ -179,6 +266,24 @@ function applyOp(s: MutableState, op: Op): void {
     case 'revoke-role-membership':
       s.roleMemberships.delete(roleMembershipKey(op.parent, op.child))
       return
+    case 'create-schema':
+      s.schemas.add(op.schema)
+      return
+    case 'create-function':
+      s.functions.set(functionKey(op.fn.schema, op.fn.name), op.fn)
+      return
+    case 'drop-function':
+      s.functions.delete(functionKey(op.schema, op.name))
+      return
+    case 'grant-execute':
+      s.functionGrants.set(
+        functionGrantKey(op.schema, op.name, op.role),
+        Object.freeze({ schema: op.schema, name: op.name, role: op.role, argTypes: op.argTypes })
+      )
+      return
+    case 'revoke-execute':
+      s.functionGrants.delete(functionGrantKey(op.schema, op.name, op.role))
+      return
   }
 }
 
@@ -197,6 +302,16 @@ export function roleMembershipKey(parent: string, child: string): string {
   return `${parent}->${child}`
 }
 
+/** Key used for {@link State.functions}. */
+export function functionKey(schema: string, name: string): string {
+  return `${schema}.${name}`
+}
+
+/** Key used for {@link State.functionGrants}. */
+export function functionGrantKey(schema: string, name: string, role: string): string {
+  return `${schema}.${name}::EXECUTE::${role}`
+}
+
 function freezeState(s: MutableState): State {
   // Set / Map are not deeply immutable via Object.freeze, but the
   // ReadonlySet / ReadonlyMap typing protects consumers at compile time.
@@ -209,5 +324,8 @@ function freezeState(s: MutableState): State {
     columnGrants: s.columnGrants,
     roles: s.roles,
     roleMemberships: s.roleMemberships,
+    schemas: s.schemas,
+    functions: s.functions,
+    functionGrants: s.functionGrants,
   })
 }

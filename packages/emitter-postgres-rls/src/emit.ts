@@ -37,6 +37,12 @@ export interface EmitContext {
    */
   readonly resourceGrants?: ResourceGrantsDefinition
   /**
+   * Target schema for guarddog-managed functions (ADR-0026). Required only
+   * when compiled policies reference `p.fn(...)`. Set from
+   * `defineFunctions({ schema })`.
+   */
+  readonly functionSchema?: string
+  /**
    * Override the Prisma model -> table name mapping. Falls back to
    * `defaultTableResolver` (CamelCase -> snake_case, singular, lowercase).
    * Consumers using Prisma `@@map` directives should plug in a resolver
@@ -260,6 +266,7 @@ function makeExprCtx(table: string, ctx: EmitContext, qualifyColumns: boolean): 
     qualifyColumns,
     claims: ctx.claims,
     ...(ctx.resourceGrants !== undefined && { resourceGrants: ctx.resourceGrants }),
+    ...(ctx.functionSchema !== undefined && { functionSchema: ctx.functionSchema }),
     ...(ctx.compileHasAppRole !== undefined && { compileHasAppRole: ctx.compileHasAppRole }),
     ...(ctx.compileHasGrant !== undefined && { compileHasGrant: ctx.compileHasGrant }),
     ...(ctx.compileHasResourcePermission !== undefined && {
