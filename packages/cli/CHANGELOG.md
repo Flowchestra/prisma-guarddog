@@ -1,5 +1,18 @@
 # @flowchestra/prisma-guarddog
 
+## 0.1.0-alpha.8
+
+### Patch Changes
+
+- Updated dependencies
+  [[`21ae5b6`](https://github.com/Flowchestra/prisma-guarddog/commit/21ae5b6110ff6715251bb0edcf60afffcbd7ce6a)]:
+  - @flowchestra/prisma-guarddog-core@0.1.0-alpha.8
+  - @flowchestra/prisma-guarddog-emitter-postgres-column-privileges@0.1.0-alpha.8
+  - @flowchestra/prisma-guarddog-emitter-postgres-rls@0.1.0-alpha.8
+  - @flowchestra/prisma-guarddog-importer-postgres@0.1.0-alpha.8
+  - @flowchestra/prisma-guarddog-importer-prisma@0.1.0-alpha.8
+  - @flowchestra/prisma-guarddog-lint@0.1.0-alpha.8
+
 ## 0.1.0-alpha.7
 
 ### Patch Changes

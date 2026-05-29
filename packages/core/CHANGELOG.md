@@ -1,5 +1,20 @@
 # @flowchestra/prisma-guarddog-core
 
+## 0.1.0-alpha.8
+
+### Patch Changes
+
+- [`21ae5b6`](https://github.com/Flowchestra/prisma-guarddog/commit/21ae5b6110ff6715251bb0edcf60afffcbd7ce6a)
+  Thanks [@Henry-Steele](https://github.com/Henry-Steele)! - Adopt lockstep
+  versioning. All `@flowchestra/*` packages are now a changesets `fixed` group,
+  so they version and publish together at a single shared version from here on.
+
+  This realigns the suite after an alpha.6/alpha.7 split: two features (managed
+  functions, then the column-privilege lint warning) released in two separate
+  passes, leaving `@flowchestra/prisma-guarddog` + `…-lint` at alpha.7 and the
+  rest at alpha.6. With the fixed group, this release brings every package up to
+  the same alpha line.
+
 ## 0.1.0-alpha.6
 
 ### Minor Changes
