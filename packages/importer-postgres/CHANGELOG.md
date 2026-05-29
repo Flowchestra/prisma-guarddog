@@ -1,5 +1,13 @@
 # @flowchestra/prisma-guarddog-importer-postgres
 
+## 0.1.0-alpha.6
+
+### Patch Changes
+
+- Updated dependencies
+  [[`523d372`](https://github.com/Flowchestra/prisma-guarddog/commit/523d372c577ba32c14cf670dd9c2d53140bd6359)]:
+  - @flowchestra/prisma-guarddog-core@0.1.0-alpha.6
+
 ## 0.1.0-alpha.5
 
 ### Patch Changes

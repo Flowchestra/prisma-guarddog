@@ -1,6 +1,6 @@
 {
   "name": "@flowchestra/prisma-guarddog-testing-postgres",
-  "version": "0.1.0-alpha.5",
+  "version": "0.1.0-alpha.6",
   "description": "Real-Postgres verification harness for prisma-guarddog: withDbRole, withClaims, assertion helpers",
   "license": "MIT",
   "repository": {
