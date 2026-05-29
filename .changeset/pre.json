@@ -23,6 +23,7 @@
     "feat-prisma-config-discovery",
     "feat-rank-group-grants-and-cli-overrides",
     "feat-table-backed-resource-grants",
+    "feat-typed-model-and-column-refs",
     "fix-exports-default-and-importer-roles",
     "fix-fn-args-instanceof-jiti",
     "initial-alpha"

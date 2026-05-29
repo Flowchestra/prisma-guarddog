@@ -1,6 +1,6 @@
 {
   "name": "@flowchestra/prisma-guarddog-emitter-postgres-column-privileges",
-  "version": "0.1.0-alpha.9",
+  "version": "0.1.0-alpha.10",
   "description": "Postgres column-privilege emitter for prisma-guarddog: column GRANT/REVOKE",
   "license": "MIT",
   "repository": {
