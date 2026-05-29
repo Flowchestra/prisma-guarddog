@@ -1,5 +1,13 @@
 # @flowchestra/prisma-guarddog
 
+## 0.1.0-alpha.7
+
+### Patch Changes
+
+- Updated dependencies
+  [[`7037142`](https://github.com/Flowchestra/prisma-guarddog/commit/70371420f53db68b694984e67f8daa46dc0f67a1)]:
+  - @flowchestra/prisma-guarddog-lint@0.1.0-alpha.7
+
 ## 0.1.0-alpha.6
 
 ### Minor Changes
