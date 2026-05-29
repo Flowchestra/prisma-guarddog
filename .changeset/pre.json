@@ -16,6 +16,7 @@
   "changesets": [
     "chore-lockstep-version-alignment",
     "cli-emit-diff-import-and-lint-flag",
+    "feat-adopt-interactive-triage",
     "feat-column-privilege-unenforced-lint",
     "feat-existing-policy-drift-and-cutover",
     "feat-hasgrant-table-hint-autocomplete",

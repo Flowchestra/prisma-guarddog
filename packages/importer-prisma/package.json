@@ -1,6 +1,6 @@
 {
   "name": "@flowchestra/prisma-guarddog-importer-prisma",
-  "version": "0.1.0-alpha.11",
+  "version": "0.1.0-alpha.12",
   "description": "Prisma DMMF importer for prisma-guarddog: coverage check and model scaffold generation",
   "license": "MIT",
   "repository": {
