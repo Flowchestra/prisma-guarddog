@@ -1,5 +1,12 @@
 # @flowchestra/prisma-guarddog-emitter-postgres-column-privileges
 
+## 0.1.0-alpha.11
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @flowchestra/prisma-guarddog-core@0.1.0-alpha.11
+
 ## 0.1.0-alpha.10
 
 ### Patch Changes
