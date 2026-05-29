@@ -1,19 +1,20 @@
 /**
  * Config resolution for the `prisma-guarddog` CLI.
  *
- * Resolution order per ADR-0009:
+ * Resolution order per ADR-0009 (highest precedence first):
  *   1. Explicit values from a `guarddog.config.ts` file (loaded via jiti).
- *   2. Paths read from a `prisma.config.ts` file (when present).
+ *   2. Paths read from a `prisma.config.ts` file (when present): the Prisma
+ *      `schema` location and `migrations.path` feed guarddog's
+ *      `prismaSchemaPath` / `migrationsDir` so guarddog follows wherever the
+ *      consumer put their Prisma schema + migrations instead of assuming
+ *      `prisma/`.
  *   3. Conventional defaults: `prisma/guarddog.ts`, `prisma/schema.prisma`,
  *      `prisma/migrations/`.
  *
- * Phase 1 implements (1) and (3). Reading `prisma.config.ts` is a Phase 2
- * follow-up; for now consumers using non-default Prisma paths point at
- * them via `guarddog.config.ts`.
- *
- * `resolveConfig` is a pure function — no filesystem access. The
- * `discoverConfig` helper one level up loads the config file (if any)
- * and folds it into the resolved shape.
+ * `resolveConfig` is a pure function — no filesystem access; the
+ * `prisma.config.ts`-derived paths are passed in as `prismaDefaults`. The
+ * `discoverConfig` helper one level up loads both config files (if present)
+ * and folds them into the resolved shape.
  */
 
 import { existsSync } from 'node:fs'
@@ -63,11 +64,23 @@ export interface GuarddogConfigFile {
   readonly renderOverrides?: RenderOverrides
 }
 
+/**
+ * Path hints extracted from a consumer's `prisma.config.ts`. Both are
+ * already resolved to absolute paths by {@link loadPrismaConfig}. They sit
+ * below `guarddog.config.ts` overrides and above the conventional defaults.
+ */
+export interface PrismaConfigPaths {
+  readonly prismaSchemaPath?: string
+  readonly migrationsDir?: string
+}
+
 export interface ResolveConfigOptions {
   readonly cwd?: string
   readonly overrides?: GuarddogConfigFile
   /** Base path against which relative overrides resolve. Defaults to cwd. */
   readonly overridesBase?: string
+  /** Absolute path hints from `prisma.config.ts`; used as defaults below overrides. */
+  readonly prismaDefaults?: PrismaConfigPaths
 }
 
 /**
@@ -79,6 +92,7 @@ export function resolveConfig(opts: ResolveConfigOptions = {}): ResolvedConfig {
   const cwd = opts.cwd ?? process.cwd()
   const overrides = opts.overrides ?? {}
   const base = opts.overridesBase ?? cwd
+  const prismaDefaults = opts.prismaDefaults ?? {}
 
   const resolveAgainstBase = (p: string | undefined, fallback: string): string => {
     if (p === undefined) return fallback
@@ -88,8 +102,14 @@ export function resolveConfig(opts: ResolveConfigOptions = {}): ResolvedConfig {
   return Object.freeze({
     cwd,
     schemaPath: resolveAgainstBase(overrides.schemaPath, resolve(cwd, 'prisma', 'guarddog.ts')),
-    prismaSchemaPath: resolveAgainstBase(overrides.prismaSchemaPath, resolve(cwd, 'prisma', 'schema.prisma')),
-    migrationsDir: resolveAgainstBase(overrides.migrationsDir, resolve(cwd, 'prisma', 'migrations')),
+    prismaSchemaPath: resolveAgainstBase(
+      overrides.prismaSchemaPath,
+      prismaDefaults.prismaSchemaPath ?? resolve(cwd, 'prisma', 'schema.prisma')
+    ),
+    migrationsDir: resolveAgainstBase(
+      overrides.migrationsDir,
+      prismaDefaults.migrationsDir ?? resolve(cwd, 'prisma', 'migrations')
+    ),
     metadataExt: overrides.metadataExt ?? '.guarddog.json',
     // Functions, not paths — passed through verbatim. Frozen shallow copy so
     // the resolved config can't be mutated, but the compiler fns are shared.
@@ -132,15 +152,78 @@ export async function loadConfigFile(configPath: string): Promise<{
 }
 
 /**
- * Full discovery: locate `guarddog.config.*` in `cwd`, load it if found,
- * fold its overrides into the conventional defaults, return the resolved
- * shape. The CLI's bin script calls this once per invocation.
+ * Locate `prisma.config.ts` (or `.js`/`.mjs`) in `cwd`. Same root-only
+ * lookup as {@link findConfigFile} — no parent-directory walk.
+ */
+export function findPrismaConfigFile(cwd: string): string | undefined {
+  for (const name of ['prisma.config.ts', 'prisma.config.js', 'prisma.config.mjs']) {
+    const candidate = resolve(cwd, name)
+    if (existsSync(candidate)) return candidate
+  }
+  return undefined
+}
+
+/**
+ * Read the consumer's `prisma.config.ts` and pull out the two paths guarddog
+ * cares about: the Prisma `schema` location and `migrations.path`. Relative
+ * values resolve against the config file's directory.
+ *
+ * Lenient by design: `prisma.config.ts` belongs to Prisma, not guarddog. If
+ * it can't be loaded (jiti error, unexpected imports) we warn and fall back
+ * to conventions rather than failing the command — but we never *silently*
+ * ignore a present-but-broken config.
+ */
+export async function loadPrismaConfig(configPath: string): Promise<PrismaConfigPaths> {
+  const jiti = createJiti(fileURLToPath(import.meta.url))
+  let loaded: unknown
+  try {
+    loaded = await jiti.import(configPath)
+  } catch (err) {
+    process.stderr.write(
+      `[prisma-guarddog] found ${configPath} but could not load it (${(err as Error).message}); ` +
+        'falling back to default Prisma paths.\n'
+    )
+    return Object.freeze({})
+  }
+
+  const cfg =
+    typeof loaded === 'object' && loaded !== null && 'default' in loaded && (loaded as { default?: unknown }).default
+      ? (loaded as { default: unknown }).default
+      : loaded
+  if (typeof cfg !== 'object' || cfg === null) return Object.freeze({})
+
+  const baseDir = dirname(configPath)
+  const toAbs = (p: string): string => (isAbsolute(p) ? p : resolve(baseDir, p))
+
+  const out: { prismaSchemaPath?: string; migrationsDir?: string } = {}
+  const schema = (cfg as { schema?: unknown }).schema
+  if (typeof schema === 'string' && schema.length > 0) {
+    out.prismaSchemaPath = toAbs(schema)
+  }
+  const migrations = (cfg as { migrations?: unknown }).migrations
+  if (typeof migrations === 'object' && migrations !== null) {
+    const path = (migrations as { path?: unknown }).path
+    if (typeof path === 'string' && path.length > 0) {
+      out.migrationsDir = toAbs(path)
+    }
+  }
+  return Object.freeze(out)
+}
+
+/**
+ * Full discovery: read `prisma.config.*` (if present) for path hints, locate
+ * + load `guarddog.config.*` (if present), and fold both into the
+ * conventional defaults — guarddog.config wins over prisma.config wins over
+ * conventions. The CLI's bin script calls this once per invocation.
  */
 export async function discoverConfig(cwd: string = process.cwd()): Promise<ResolvedConfig> {
+  const prismaConfigPath = findPrismaConfigFile(cwd)
+  const prismaDefaults = prismaConfigPath !== undefined ? await loadPrismaConfig(prismaConfigPath) : {}
+
   const configPath = findConfigFile(cwd)
   if (configPath === undefined) {
-    return resolveConfig({ cwd })
+    return resolveConfig({ cwd, prismaDefaults })
   }
   const { overrides, base } = await loadConfigFile(configPath)
-  return resolveConfig({ cwd, overrides, overridesBase: base })
+  return resolveConfig({ cwd, overrides, overridesBase: base, prismaDefaults })
 }

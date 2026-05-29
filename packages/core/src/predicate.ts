@@ -95,12 +95,23 @@ function binop(op: BinaryOp, left: FluentExpr, right: FluentExpr): FluentExpr {
 }
 
 /**
- * Normalize a `p.fn(...)` argument into an `Expr`. A built `FluentExpr`
+ * Normalize a `p.fn(...)` argument into an `Expr`. A built expression
  * contributes its `.ast`; a bare SQL literal (string/number/boolean/null) is
  * wrapped as a `literal` node.
+ *
+ * Discriminates by duck-typing on `.ast` rather than `instanceof FluentExpr`:
+ * when the schema file is loaded via jiti (the CLI's `loadSchema`), the
+ * consumer's `col(...)` is a `FluentExpr` from jiti's module instance while
+ * the builder runs in the CLI's instance, so `instanceof` is false across that
+ * realm boundary and a `col(...)` arg would be mis-wrapped as a literal whose
+ * value is the FluentExpr object (#19). Every other builder method
+ * discriminates via `.ast` for the same reason.
  */
 function fnArgToExpr(arg: FnArgValue): Expr {
-  return arg instanceof FluentExpr ? arg.ast : (Object.freeze({ kind: 'literal', value: arg }) as Expr)
+  if (typeof arg === 'object' && arg !== null && 'ast' in arg) {
+    return (arg as FluentExpr).ast
+  }
+  return Object.freeze({ kind: 'literal', value: arg }) as Expr
 }
 
 /**

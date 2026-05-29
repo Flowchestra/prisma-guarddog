@@ -4,7 +4,14 @@ import { join, resolve } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { discoverConfig, findConfigFile, loadConfigFile, resolveConfig } from './config.js'
+import {
+  discoverConfig,
+  findConfigFile,
+  findPrismaConfigFile,
+  loadConfigFile,
+  loadPrismaConfig,
+  resolveConfig,
+} from './config.js'
 
 describe('resolveConfig (pure)', () => {
   it('returns conventional defaults when no overrides are provided', () => {
@@ -53,6 +60,26 @@ describe('resolveConfig (pure)', () => {
     const compileHasGrant = (): string => '/* custom */'
     const cfg = resolveConfig({ cwd: '/tmp/proj', overrides: { renderOverrides: { compileHasGrant } } })
     expect(cfg.renderOverrides.compileHasGrant).toBe(compileHasGrant)
+  })
+
+  it('uses prismaDefaults as the layer below conventions', () => {
+    const cfg = resolveConfig({
+      cwd: '/tmp/proj',
+      prismaDefaults: { prismaSchemaPath: '/db/schema.prisma', migrationsDir: '/db/migrations' },
+    })
+    expect(cfg.prismaSchemaPath).toBe('/db/schema.prisma')
+    expect(cfg.migrationsDir).toBe('/db/migrations')
+    // guarddog's own schema file is not a prisma.config concern — stays convention
+    expect(cfg.schemaPath).toBe('/tmp/proj/prisma/guarddog.ts')
+  })
+
+  it('lets guarddog.config overrides win over prismaDefaults', () => {
+    const cfg = resolveConfig({
+      cwd: '/tmp/proj',
+      overrides: { migrationsDir: '/explicit/migrations' },
+      prismaDefaults: { migrationsDir: '/db/migrations' },
+    })
+    expect(cfg.migrationsDir).toBe('/explicit/migrations')
   })
 })
 
@@ -131,6 +158,73 @@ describe('loadConfigFile + discoverConfig (I/O)', () => {
       const result = await loadConfigFile(configPath)
       expect(result.overrides.metadataExt).toBe('.X')
       expect(result.base).toBe(workDir)
+    } finally {
+      rmSync(workDir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('prisma.config.ts discovery (I/O)', () => {
+  it('finds prisma.config.ts', () => {
+    const workDir = mkdtempSync(join(tmpdir(), 'guarddog-cfg-'))
+    try {
+      const p = join(workDir, 'prisma.config.ts')
+      writeFileSync(p, 'export default {}')
+      expect(findPrismaConfigFile(workDir)).toBe(p)
+    } finally {
+      rmSync(workDir, { recursive: true, force: true })
+    }
+  })
+
+  it('extracts schema + migrations.path (relative to the config dir)', async () => {
+    const workDir = mkdtempSync(join(tmpdir(), 'guarddog-cfg-'))
+    try {
+      const p = join(workDir, 'prisma.config.ts')
+      writeFileSync(p, `export default { schema: './db/schema.prisma', migrations: { path: './db/migrations' } }`)
+      const paths = await loadPrismaConfig(p)
+      expect(paths.prismaSchemaPath).toBe(resolve(workDir, 'db/schema.prisma'))
+      expect(paths.migrationsDir).toBe(resolve(workDir, 'db/migrations'))
+    } finally {
+      rmSync(workDir, { recursive: true, force: true })
+    }
+  })
+
+  it('discoverConfig folds prisma.config paths below conventions', async () => {
+    const workDir = mkdtempSync(join(tmpdir(), 'guarddog-cfg-'))
+    try {
+      writeFileSync(
+        join(workDir, 'prisma.config.ts'),
+        `export default { schema: './src/db/schema.prisma', migrations: { path: './src/db/migrations' } }`
+      )
+      const cfg = await discoverConfig(workDir)
+      expect(cfg.prismaSchemaPath).toBe(resolve(workDir, 'src/db/schema.prisma'))
+      expect(cfg.migrationsDir).toBe(resolve(workDir, 'src/db/migrations'))
+      // guarddog's own schema file stays a convention
+      expect(cfg.schemaPath).toBe(resolve(workDir, 'prisma/guarddog.ts'))
+    } finally {
+      rmSync(workDir, { recursive: true, force: true })
+    }
+  })
+
+  it('lets guarddog.config.ts override prisma.config.ts', async () => {
+    const workDir = mkdtempSync(join(tmpdir(), 'guarddog-cfg-'))
+    try {
+      writeFileSync(join(workDir, 'prisma.config.ts'), `export default { migrations: { path: './src/db/migrations' } }`)
+      writeFileSync(join(workDir, 'guarddog.config.ts'), `export default { migrationsDir: './explicit/migrations' }`)
+      const cfg = await discoverConfig(workDir)
+      expect(cfg.migrationsDir).toBe(resolve(workDir, 'explicit/migrations'))
+    } finally {
+      rmSync(workDir, { recursive: true, force: true })
+    }
+  })
+
+  it('ignores a prisma.config.ts with no relevant fields', async () => {
+    const workDir = mkdtempSync(join(tmpdir(), 'guarddog-cfg-'))
+    try {
+      writeFileSync(join(workDir, 'prisma.config.ts'), `export default { earlyAccess: true }`)
+      const cfg = await discoverConfig(workDir)
+      expect(cfg.prismaSchemaPath).toBe(resolve(workDir, 'prisma/schema.prisma'))
+      expect(cfg.migrationsDir).toBe(resolve(workDir, 'prisma/migrations'))
     } finally {
       rmSync(workDir, { recursive: true, force: true })
     }
