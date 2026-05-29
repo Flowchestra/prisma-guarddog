@@ -93,11 +93,16 @@ guarddog stamps every policy it creates with an ownership comment, so it can tel
 # Flags foreign policies on guarddog-managed tables; permissive ones are access-wideners.
 guarddog drift --against "$DATABASE_URL"        # --exit-code to gate CI
 
+# Interactively triage each existing policy — keep / remove / edit / override (ADR-0030).
+# `keep` marks it acknowledged (drift stops flagging it); `edit`/`override` emit a
+# scaffold to fold into guarddog.ts; `remove` drops it.
+guarddog adopt --against "$DATABASE_URL"
+
 # Cut over: prepend DROP POLICY for foreign/legacy policies, then create guarddog's.
 guarddog migrate --drop-unmanaged --against "$DATABASE_URL"
 ```
 
-Conservative by default — `migrate` never drops a foreign policy unless you pass `--drop-unmanaged`.
+Conservative by default — `migrate` never drops a foreign policy unless you pass `--drop-unmanaged`, and `adopt` only writes the keep-marks/drops you confirm per policy.
 
 ## Quickstart
 

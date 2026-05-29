@@ -10,12 +10,14 @@
  *   guarddog diff      — preview what the next migrate would emit, no writes
  *   guarddog import    — scaffold a guarddog.ts from a live database
  *   guarddog drift     — compare declared policies vs a live DB (ADR-0029)
+ *   guarddog adopt     — interactively triage existing policies (ADR-0030)
  */
 
 import { Command } from 'commander'
 import pc from 'picocolors'
 
 import pkg from '../package.json' with { type: 'json' }
+import { runAdopt } from './commands/adopt.js'
 import { runCheck } from './commands/check.js'
 import { runDiff } from './commands/diff.js'
 import { runDrift } from './commands/drift.js'
@@ -125,6 +127,24 @@ async function main(): Promise<void> {
         url: opts.against,
         ...(opts.schema !== undefined && { schema: opts.schema }),
         ...(opts.exitCode === true && { exitCode: true }),
+      })
+      process.exit(result.ok ? 0 : 1)
+    })
+
+  program
+    .command('adopt')
+    .description('Interactively triage existing (foreign) RLS policies: keep / remove / edit / override (ADR-0030).')
+    .option('--cwd <path>', 'override the working directory used for config discovery')
+    .requiredOption('--against <connection>', 'Postgres connection string to triage against')
+    .option('--schema <name>', 'restrict to one Postgres schema (default: public)')
+    .option('--out <path>', 'write the edit/override scaffold to this file instead of stdout')
+    .action(async (opts: { cwd?: string; against: string; schema?: string; out?: string }) => {
+      const config = await discoverConfig(opts.cwd ?? process.cwd())
+      const result = await runAdopt({
+        config,
+        url: opts.against,
+        ...(opts.schema !== undefined && { schema: opts.schema }),
+        ...(opts.out !== undefined && { out: opts.out }),
       })
       process.exit(result.ok ? 0 : 1)
     })

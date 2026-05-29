@@ -18,9 +18,10 @@
  */
 
 import type { Op, State } from '@flowchestra/prisma-guarddog-core'
-import type { PolicyInventoryRow } from '@flowchestra/prisma-guarddog-importer-postgres'
+import { quoteIdent, quoteString } from '@flowchestra/prisma-guarddog-emitter-postgres-rls'
+import type { ImportedPolicyRow, PolicyInventoryRow } from '@flowchestra/prisma-guarddog-importer-postgres'
 
-import { GUARDDOG_POLICY_COMMENT } from './render-ops.js'
+import { GUARDDOG_IGNORE_COMMENT, GUARDDOG_POLICY_COMMENT } from './render-ops.js'
 
 export interface ForeignPolicy {
   readonly table: string
@@ -40,13 +41,23 @@ export interface MissingPolicy {
   readonly policyName: string
 }
 
+export interface AcknowledgedPolicy {
+  readonly table: string
+  readonly policyName: string
+}
+
 export interface PolicyDrift {
   /** Tables guarddog manages (enables RLS on) — the scope of foreign detection. */
   readonly managedTables: ReadonlyArray<string>
   readonly foreign: ReadonlyArray<ForeignPolicy>
   readonly staleManaged: ReadonlyArray<StaleManagedPolicy>
   readonly missing: ReadonlyArray<MissingPolicy>
-  /** True iff there is no foreign / stale / missing drift. */
+  /**
+   * Foreign policies the operator deliberately kept (`guarddog adopt` → keep,
+   * marked `:ignore`). Reported for transparency; not drift (ADR-0030).
+   */
+  readonly acknowledged: ReadonlyArray<AcknowledgedPolicy>
+  /** True iff there is no foreign / stale / missing drift (acknowledged doesn't count). */
   readonly ok: boolean
 }
 
@@ -74,11 +85,14 @@ export function computePolicyDrift(declared: State, live: ReadonlyArray<PolicyIn
 
   const foreign: ForeignPolicy[] = []
   const staleManaged: StaleManagedPolicy[] = []
+  const acknowledged: AcknowledgedPolicy[] = []
   for (const row of live) {
     if (!managedTables.has(row.table)) continue
     if (declaredByTable.get(row.table)?.has(row.policyName)) continue // declared + owned
     if (row.comment === GUARDDOG_POLICY_COMMENT) {
       staleManaged.push(Object.freeze({ table: row.table, policyName: row.policyName }))
+    } else if (row.comment === GUARDDOG_IGNORE_COMMENT) {
+      acknowledged.push(Object.freeze({ table: row.table, policyName: row.policyName }))
     } else {
       foreign.push(
         Object.freeze({
@@ -106,7 +120,84 @@ export function computePolicyDrift(declared: State, live: ReadonlyArray<PolicyIn
     foreign: Object.freeze(foreign.toSorted(sortByTableName)),
     staleManaged: Object.freeze(staleManaged.toSorted(sortByTableName)),
     missing: Object.freeze(missing.toSorted(sortByTableName)),
+    acknowledged: Object.freeze(acknowledged.toSorted(sortByTableName)),
     ok: foreign.length === 0 && staleManaged.length === 0 && missing.length === 0,
+  })
+}
+
+/** SQL stamping a foreign policy as deliberately kept (`:ignore`, ADR-0030). */
+export function ignoreCommentSql(table: string, policyName: string): string {
+  return `COMMENT ON POLICY ${quoteIdent(policyName)} ON ${quoteIdent(table)} IS ${quoteString(GUARDDOG_IGNORE_COMMENT)};`
+}
+
+/** Per-policy adoption disposition (`guarddog adopt`, ADR-0030). */
+export type AdoptionDisposition = 'keep' | 'remove' | 'edit' | 'override' | 'skip'
+
+export interface AdoptionPlan {
+  /** keep → stamp the `:ignore` marker. */
+  readonly keep: ReadonlyArray<AcknowledgedPolicy>
+  /** remove → DROP POLICY now. */
+  readonly dropOps: ReadonlyArray<Op>
+  /** edit → scaffold rawSql(<legacy>) + .todo() (the full row carries the SQL). */
+  readonly editRows: ReadonlyArray<ImportedPolicyRow>
+  /** override → scaffold a fresh-author .todo() stub (legacy SQL discarded). */
+  readonly overrides: ReadonlyArray<{ readonly table: string; readonly policyName: string; readonly command: string }>
+  /** skip → left untouched; re-surfaces next run. */
+  readonly skipped: ReadonlyArray<AcknowledgedPolicy>
+}
+
+/**
+ * Map per-policy dispositions to their effects (ADR-0030). Pure — the
+ * interactive prompt builds `dispositions`; this turns them into the
+ * keep-comments / drop ops / scaffold inputs the command applies.
+ *
+ * `rowsByKey` is keyed `${table}::${policyName}` (from `readPgPolicies`) and
+ * supplies the legacy SQL needed to scaffold an `edit`. Unknown disposition or
+ * a missing row falls back to `skip`.
+ */
+export function planAdoption(
+  foreign: ReadonlyArray<ForeignPolicy>,
+  rowsByKey: ReadonlyMap<string, ImportedPolicyRow>,
+  dispositions: ReadonlyMap<string, AdoptionDisposition>
+): AdoptionPlan {
+  const keep: AcknowledgedPolicy[] = []
+  const dropOps: Op[] = []
+  const editRows: ImportedPolicyRow[] = []
+  const overrides: Array<{ table: string; policyName: string; command: string }> = []
+  const skipped: AcknowledgedPolicy[] = []
+
+  for (const f of foreign) {
+    const key = `${f.table}::${f.policyName}`
+    const disposition = dispositions.get(key) ?? 'skip'
+    const ref = { table: f.table, policyName: f.policyName }
+    switch (disposition) {
+      case 'keep':
+        keep.push(Object.freeze(ref))
+        break
+      case 'remove':
+        dropOps.push({ kind: 'drop-policy', table: f.table, name: f.policyName })
+        break
+      case 'edit': {
+        const row = rowsByKey.get(key)
+        if (row !== undefined) editRows.push(row)
+        else skipped.push(Object.freeze(ref))
+        break
+      }
+      case 'override':
+        overrides.push(Object.freeze({ table: f.table, policyName: f.policyName, command: f.command }))
+        break
+      case 'skip':
+        skipped.push(Object.freeze(ref))
+        break
+    }
+  }
+
+  return Object.freeze({
+    keep: Object.freeze(keep),
+    dropOps: Object.freeze(dropOps),
+    editRows: Object.freeze(editRows),
+    overrides: Object.freeze(overrides),
+    skipped: Object.freeze(skipped),
   })
 }
 

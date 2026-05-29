@@ -7,11 +7,11 @@ import {
   defineResources,
   Guarddog,
 } from '@flowchestra/prisma-guarddog-core'
-import type { PolicyInventoryRow } from '@flowchestra/prisma-guarddog-importer-postgres'
+import type { ImportedPolicyRow, PolicyInventoryRow } from '@flowchestra/prisma-guarddog-importer-postgres'
 import { describe, expect, it } from 'vitest'
 
-import { computePolicyDrift, driftToDropOps } from './drift.js'
-import { GUARDDOG_POLICY_COMMENT } from './render-ops.js'
+import { type AdoptionDisposition, computePolicyDrift, driftToDropOps, planAdoption } from './drift.js'
+import { GUARDDOG_IGNORE_COMMENT, GUARDDOG_POLICY_COMMENT } from './render-ops.js'
 
 function declaredState() {
   const guard = new Guarddog({
@@ -110,6 +110,85 @@ describe('computePolicyDrift', () => {
     const live: PolicyInventoryRow[] = [row({ table: 'audit_logs', policyName: 'legacy_audit', comment: null })]
     const drift = computePolicyDrift(declared, live)
     expect(drift.foreign).toHaveLength(0)
+  })
+
+  it('treats an :ignore-marked foreign policy as acknowledged (not foreign), keeping ok', () => {
+    const declared = declaredState()
+    const live: PolicyInventoryRow[] = [
+      row({
+        table: 'workspace',
+        policyName: 'workspace_app_user_select',
+        comment: GUARDDOG_POLICY_COMMENT,
+        command: 'SELECT',
+      }),
+      row({
+        table: 'workspace',
+        policyName: 'workspace_app_user_insert',
+        comment: GUARDDOG_POLICY_COMMENT,
+        command: 'INSERT',
+      }),
+      // a foreign policy the operator deliberately kept (adopt → keep)
+      row({ table: 'workspace', policyName: 'kept_legacy', comment: GUARDDOG_IGNORE_COMMENT, command: 'ALL' }),
+    ]
+    const drift = computePolicyDrift(declared, live)
+    expect(drift.acknowledged.map((a) => a.policyName)).toEqual(['kept_legacy'])
+    expect(drift.foreign).toHaveLength(0)
+    expect(drift.ok).toBe(true)
+  })
+})
+
+const importedRow = (
+  over: Partial<ImportedPolicyRow> & Pick<ImportedPolicyRow, 'table' | 'policyName'>
+): ImportedPolicyRow =>
+  Object.freeze({
+    schema: 'public',
+    command: 'ALL',
+    roles: Object.freeze(['app_user']),
+    usingExpression: 'true',
+    withCheckExpression: null,
+    permissive: true,
+    ...over,
+  })
+
+describe('planAdoption', () => {
+  const foreign = [
+    { table: 'workspace', policyName: 'p_keep', command: 'ALL', permissive: true },
+    { table: 'workspace', policyName: 'p_remove', command: 'ALL', permissive: true },
+    { table: 'workspace', policyName: 'p_edit', command: 'SELECT', permissive: true },
+    { table: 'workspace', policyName: 'p_override', command: 'UPDATE', permissive: true },
+    { table: 'workspace', policyName: 'p_skip', command: 'DELETE', permissive: true },
+  ] as const
+  const rowsByKey = new Map([
+    ['workspace::p_edit', importedRow({ table: 'workspace', policyName: 'p_edit', usingExpression: 'tenant_id = x' })],
+  ])
+  const dispositions = new Map<string, AdoptionDisposition>([
+    ['workspace::p_keep', 'keep'],
+    ['workspace::p_remove', 'remove'],
+    ['workspace::p_edit', 'edit'],
+    ['workspace::p_override', 'override'],
+    ['workspace::p_skip', 'skip'],
+  ])
+
+  it('routes each disposition to its effect', () => {
+    const plan = planAdoption(foreign, rowsByKey, dispositions)
+    expect(plan.keep.map((k) => k.policyName)).toEqual(['p_keep'])
+    expect(plan.dropOps).toEqual([{ kind: 'drop-policy', table: 'workspace', name: 'p_remove' }])
+    expect(plan.editRows.map((r) => r.policyName)).toEqual(['p_edit'])
+    expect(plan.overrides.map((o) => o.policyName)).toEqual(['p_override'])
+    expect(plan.skipped.map((s) => s.policyName)).toEqual(['p_skip'])
+  })
+
+  it('defaults a missing disposition to skip, and an edit with no source row to skip', () => {
+    const plan = planAdoption(
+      [
+        { table: 'workspace', policyName: 'no_decision', command: 'ALL', permissive: true },
+        { table: 'workspace', policyName: 'edit_no_row', command: 'ALL', permissive: true },
+      ],
+      new Map(),
+      new Map([['workspace::edit_no_row', 'edit']])
+    )
+    expect(plan.skipped.map((s) => s.policyName).toSorted()).toEqual(['edit_no_row', 'no_decision'])
+    expect(plan.editRows).toHaveLength(0)
   })
 })
 

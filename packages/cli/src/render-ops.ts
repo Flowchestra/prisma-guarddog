@@ -51,6 +51,14 @@ import {
  */
 export const GUARDDOG_POLICY_COMMENT = 'prisma-guarddog:managed'
 
+/**
+ * Marker stamped on a *foreign* policy the operator deliberately keeps outside
+ * guarddog (`guarddog adopt` → keep, ADR-0030). Drift treats a policy commented
+ * with this as acknowledged: reported for transparency, never flagged as
+ * foreign, never dropped by the cutover.
+ */
+export const GUARDDOG_IGNORE_COMMENT = 'prisma-guarddog:ignore'
+
 export interface RenderOverrides {
   readonly compileHasAppRole?: HasAppRoleCompiler
   readonly compileHasGrant?: HasGrantCompiler
