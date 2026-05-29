@@ -26,6 +26,7 @@
     "feat-rank-group-grants-and-cli-overrides",
     "feat-table-backed-resource-grants",
     "feat-typed-model-and-column-refs",
+    "feat-user-declared-policy-names",
     "fix-exports-default-and-importer-roles",
     "fix-fn-args-instanceof-jiti",
     "initial-alpha"
