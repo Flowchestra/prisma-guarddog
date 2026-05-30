@@ -47,7 +47,7 @@ export type {
 export { defineSchema, materializeSchema } from './schema.js'
 export type { ColumnUnionMap, SchemaDefinition } from './schema.js'
 
-export { Guarddog, ModelBuilder, PolicyBuilder } from './guarddog.js'
+export { Guarddog, ModelBuilder, PolicyBuilder, RestrictivePolicyBuilder } from './guarddog.js'
 export type { GuarddogConfig } from './guarddog.js'
 
 export { PolymorphicBuilder, PolymorphicTargetBuilder, PolymorphicTargetPolicyBuilder } from './polymorphic.js'
@@ -55,6 +55,7 @@ export { PolymorphicBuilder, PolymorphicTargetBuilder, PolymorphicTargetPolicyBu
 export { col, FluentExpr, PredicateBuilder } from './predicate.js'
 
 export type {
+  AllSpec,
   BinaryOp,
   ColumnPrivilegeAst,
   ColumnPrivilegeGrant,

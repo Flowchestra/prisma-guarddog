@@ -83,25 +83,47 @@ export function emitPolicy(policy: PolicyAst, ctx: EmitContext): readonly string
 
   const exprCtx: ExprCompileCtx = makeExprCtx(table, ctx, ctx.qualifyColumns ?? false)
   const dbRoleSql = quoteIdent(policy.dbRole)
+  const restrictive = policy.restrictive === true
 
   // `spec.name ?? policyName(...)` honors user-declared overrides (ADR-0031).
   // The same name flows into both the DROP and CREATE inside `emitCreatePolicy`,
   // so a typed replacement under a legacy name swaps in place atomically.
+  //
+  // ADR-0032: restrictive policies declare a single `FOR ALL` spec; the
+  // `<table>_isolation` auto-name applies when `.isolation()` set the flag.
+  if (policy.all !== undefined) {
+    const name =
+      policy.all.name ??
+      (policy.isolation === true ? `${table}_isolation` : policyName({ table, dbRole: policy.dbRole, verb: 'all' }))
+    out.push(
+      ...emitCreatePolicy(name, table, dbRoleSql, 'ALL', policy.all.using, policy.all.check, exprCtx, { restrictive })
+    )
+  }
   if (policy.select !== undefined) {
     const name = policy.select.name ?? policyName({ table, dbRole: policy.dbRole, verb: 'select' })
-    out.push(...emitCreatePolicy(name, table, dbRoleSql, 'SELECT', policy.select.using, undefined, exprCtx))
+    out.push(
+      ...emitCreatePolicy(name, table, dbRoleSql, 'SELECT', policy.select.using, undefined, exprCtx, { restrictive })
+    )
   }
   if (policy.insert !== undefined) {
     const name = policy.insert.name ?? policyName({ table, dbRole: policy.dbRole, verb: 'insert' })
-    out.push(...emitCreatePolicy(name, table, dbRoleSql, 'INSERT', undefined, policy.insert.check, exprCtx))
+    out.push(
+      ...emitCreatePolicy(name, table, dbRoleSql, 'INSERT', undefined, policy.insert.check, exprCtx, { restrictive })
+    )
   }
   if (policy.update !== undefined) {
     const name = policy.update.name ?? policyName({ table, dbRole: policy.dbRole, verb: 'update' })
-    out.push(...emitCreatePolicy(name, table, dbRoleSql, 'UPDATE', policy.update.using, policy.update.check, exprCtx))
+    out.push(
+      ...emitCreatePolicy(name, table, dbRoleSql, 'UPDATE', policy.update.using, policy.update.check, exprCtx, {
+        restrictive,
+      })
+    )
   }
   if (policy.delete !== undefined) {
     const name = policy.delete.name ?? policyName({ table, dbRole: policy.dbRole, verb: 'delete' })
-    out.push(...emitCreatePolicy(name, table, dbRoleSql, 'DELETE', policy.delete.using, undefined, exprCtx))
+    out.push(
+      ...emitCreatePolicy(name, table, dbRoleSql, 'DELETE', policy.delete.using, undefined, exprCtx, { restrictive })
+    )
   }
 
   return Object.freeze(out)
@@ -235,13 +257,15 @@ function appendTodos(out: string[], table: string, todos: ReadonlyArray<string>)
 interface EmitCreateOpts {
   readonly alreadyCompiledUsing?: boolean
   readonly alreadyCompiledCheck?: boolean
+  /** ADR-0032: emit `AS RESTRICTIVE`. Default false / undefined = permissive (implicit). */
+  readonly restrictive?: boolean
 }
 
 function emitCreatePolicy(
   name: string,
   table: string,
   dbRoleSql: string,
-  verb: 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE',
+  verb: 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE' | 'ALL',
   using: Expr | string | undefined,
   check: Expr | string | undefined,
   ctx: ExprCompileCtx,
@@ -251,12 +275,11 @@ function emitCreatePolicy(
   const quotedTable = quoteIdent(table)
   const usingSql = using === undefined ? undefined : typeof using === 'string' ? using : compileExpr(using, ctx)
   const checkSql = check === undefined ? undefined : typeof check === 'string' ? check : compileExpr(check, ctx)
-  // Suppress unused warnings for `opts` — kept for future symmetry / clarity.
-  void opts
 
+  const asClause = opts.restrictive === true ? ' AS RESTRICTIVE' : ''
   const drop = `DROP POLICY IF EXISTS ${quotedName} ON ${quotedTable};`
   const create =
-    `CREATE POLICY ${quotedName} ON ${quotedTable} FOR ${verb} TO ${dbRoleSql}` +
+    `CREATE POLICY ${quotedName} ON ${quotedTable}${asClause} FOR ${verb} TO ${dbRoleSql}` +
     (usingSql !== undefined ? ` USING (${usingSql})` : '') +
     (checkSql !== undefined ? ` WITH CHECK (${checkSql})` : '') +
     ';'

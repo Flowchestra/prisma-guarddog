@@ -117,6 +117,14 @@ function writeReport(drift: PolicyDrift): void {
   for (const m of drift.missing) {
     process.stdout.write(`  ${pc.yellow('•')} declared but missing in DB: ${m.table}.${m.policyName}\n`)
   }
+  for (const rm of drift.restrictivenessMismatch) {
+    const want = rm.declaredRestrictive ? 'RESTRICTIVE' : 'PERMISSIVE'
+    const got = rm.livePermissive ? 'PERMISSIVE' : 'RESTRICTIVE'
+    process.stdout.write(
+      `  ${pc.red('•')} permissive/restrictive mismatch: ${rm.table}.${rm.policyName} ` +
+        `${pc.dim(`(declared ${want}, live ${got})`)}\n`
+    )
+  }
 }
 
 function plural(n: number, one: string, many: string): string {

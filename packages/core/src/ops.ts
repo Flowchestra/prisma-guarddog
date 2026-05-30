@@ -85,6 +85,13 @@ export interface PolicyOpRecord {
   readonly check: Expr | undefined
   readonly todos: ReadonlyArray<string>
   readonly discriminator: { readonly column: string; readonly value: string } | undefined
+  /**
+   * Set on restrictive policies (ADR-0032). Emits as `AS RESTRICTIVE`;
+   * defaults to false / undefined (permissive). Tracked on the Op record so
+   * the diff engine can detect permissive ↔ restrictive flips on the same
+   * `(table, name)` and re-create.
+   */
+  readonly restrictive?: boolean
 }
 
 export interface RoleRecord {

@@ -113,6 +113,23 @@ guard.model('Workspace').policy('app_user')
   .insert({ check: (p) => …, name: 'workspaces_visibility_insert' }) // per-verb wins
 ```
 
+### Restrictive policies — the inescapable floor
+
+Postgres permissive policies **OR together**; one missing inline floor in a permissive `USING` is enough to leak. `.isolation(fn)` declares the tenant + soft-delete floor **once per table** as `AS RESTRICTIVE FOR ALL TO public`. The floor is AND'd with every other policy — future permissives (break-glass, support tools, shared-link) **cannot escape it** ([ADR-0032](./docs/adr/0032-restrictive-policy-support.md)):
+
+```ts
+guard.model('Workspace').table('workspaces')
+  // One restrictive floor — applies to SELECT, INSERT, UPDATE, DELETE.
+  .isolation((p) =>
+    p.fn('current_tenant_id').eq(col('tenant_id')).and(p.raw('deleted_at IS NULL'))
+  )
+  // Permissive — just access. The floor is already AND'd.
+  .policy('app_user')
+    .select((p) => p.hasGrant('workspace.read', col('id')))
+```
+
+`.isolation()` desugars to `.restrictivePolicy('public').forAll(fn)` with the auto-name `<table>_isolation`. The low-level `.restrictivePolicy(role)` is the escape hatch for non-PUBLIC roles or distinct floors. Pairs with `.named()` for legacy-name parity: `.isolation(fn, { name: 'tenant_isolation' })` upgrades an existing hand-written restrictive in place.
+
 ## Quickstart
 
 Packages publish to **GitHub Packages** under the `@flowchestra` scope. Two `.npmrc` lines are required — typically in your repo or `~/.npmrc`:

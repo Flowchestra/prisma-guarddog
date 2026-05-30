@@ -242,8 +242,11 @@ function renderCreatePolicy(out: string[], policy: PolicyOpRecord, ctx: RenderCo
   const usingSql = policy.using === undefined ? undefined : compileExpr(policy.using, exprCtx)
   const checkSql = policy.check === undefined ? undefined : compileExpr(policy.check, exprCtx)
 
+  // ADR-0032: restrictive policies emit `AS RESTRICTIVE`. Permissive is the
+  // Postgres default and stays implicit so existing migrations don't churn.
+  const asClause = policy.restrictive === true ? ' AS RESTRICTIVE' : ''
   const stmt =
-    `CREATE POLICY ${name} ON ${table} FOR ${verbDdl(policy.verb)} TO ${quoteIdent(policy.dbRole)}` +
+    `CREATE POLICY ${name} ON ${table}${asClause} FOR ${verbDdl(policy.verb)} TO ${quoteIdent(policy.dbRole)}` +
     (usingSql !== undefined ? ` USING (${usingSql})` : '') +
     (checkSql !== undefined ? ` WITH CHECK (${checkSql})` : '') +
     ';'

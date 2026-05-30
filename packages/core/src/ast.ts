@@ -12,7 +12,7 @@ export type LiteralValue = string | number | boolean | null
 
 export type BinaryOp = 'eq' | 'neq' | 'lt' | 'lte' | 'gt' | 'gte'
 
-export type Verb = 'select' | 'insert' | 'update' | 'delete'
+export type Verb = 'select' | 'insert' | 'update' | 'delete' | 'all'
 
 /**
  * Expression AST. Predicates inside USING and WITH CHECK clauses produce
@@ -103,6 +103,17 @@ export interface DeleteSpec {
 }
 
 /**
+ * The `FOR ALL` spec used by restrictive policies (ADR-0032). One predicate
+ * applies as both `USING` and `WITH CHECK` across every command — the
+ * inescapable floor AND'd with every other policy on the table.
+ */
+export interface AllSpec {
+  readonly using: Expr
+  readonly check: Expr
+  readonly name?: string
+}
+
+/**
  * A complete policy: one (model, dbRole) pair with any subset of verbs.
  * Multiple PolicyAsts for the same model are normal — typically one per
  * dbRole, sometimes multiple per role for distinct CRUD subsets.
@@ -119,6 +130,26 @@ export interface PolicyAst {
   readonly insert: InsertSpec | undefined
   readonly update: UpdateSpec | undefined
   readonly delete: DeleteSpec | undefined
+  /**
+   * The `FOR ALL` spec used by restrictive policies (ADR-0032). Set on a
+   * `.restrictivePolicy(role).forAll(...)` or `.isolation(...)` declaration;
+   * never set alongside `select`/`insert`/`update`/`delete` (a single
+   * `PolicyAst` is either permissive-per-verb OR restrictive-for-all).
+   */
+  readonly all: AllSpec | undefined
+  /**
+   * True for restrictive policies (ADR-0032). Emits as `AS RESTRICTIVE`; the
+   * predicate is AND'd with every permissive on the same table. Default
+   * undefined/false = permissive.
+   */
+  readonly restrictive?: boolean
+  /**
+   * Set when this policy was declared via `.isolation(...)` (ADR-0032). Used
+   * by the lifecycle to pick the auto-name `<table>_isolation` instead of the
+   * generic `<table>_<role>_all` and surfaced to lint as informational. Has no
+   * effect on emitted SQL.
+   */
+  readonly isolation?: boolean
   readonly todos: ReadonlyArray<string>
 }
 

@@ -41,6 +41,20 @@ export interface MissingPolicy {
   readonly policyName: string
 }
 
+/**
+ * ADR-0032: a policy with the same `(table, name)` exists in both declared
+ * and live but the permissive/restrictive flag disagrees. Treating this as
+ * drift forces a reapply rather than silently shipping the wrong kind.
+ */
+export interface RestrictivenessMismatch {
+  readonly table: string
+  readonly policyName: string
+  /** What guarddog declares. */
+  readonly declaredRestrictive: boolean
+  /** What's currently in `pg_policies`. */
+  readonly livePermissive: boolean
+}
+
 export interface AcknowledgedPolicy {
   readonly table: string
   readonly policyName: string
@@ -53,11 +67,17 @@ export interface PolicyDrift {
   readonly staleManaged: ReadonlyArray<StaleManagedPolicy>
   readonly missing: ReadonlyArray<MissingPolicy>
   /**
+   * ADR-0032 — declared/live permissive ↔ restrictive disagreement on the
+   * same `(table, name)`. Failing this loud forces a reapply rather than
+   * letting the wrong kind quietly ship.
+   */
+  readonly restrictivenessMismatch: ReadonlyArray<RestrictivenessMismatch>
+  /**
    * Foreign policies the operator deliberately kept (`guarddog adopt` → keep,
    * marked `:ignore`). Reported for transparency; not drift (ADR-0030).
    */
   readonly acknowledged: ReadonlyArray<AcknowledgedPolicy>
-  /** True iff there is no foreign / stale / missing drift (acknowledged doesn't count). */
+  /** True iff there is no foreign / stale / missing / restrictiveness drift (acknowledged doesn't count). */
   readonly ok: boolean
 }
 
@@ -71,6 +91,9 @@ export function computePolicyDrift(declared: State, live: ReadonlyArray<PolicyIn
 
   // Declared policy names grouped by table.
   const declaredByTable = new Map<string, Set<string>>()
+  // (table, name) → declared restrictive flag — used to detect permissive ↔
+  // restrictive drift on the same name (ADR-0032).
+  const declaredRestrictiveByKey = new Map<string, boolean>()
   for (const rec of declared.policies.values()) {
     let names = declaredByTable.get(rec.table)
     if (names === undefined) {
@@ -78,17 +101,37 @@ export function computePolicyDrift(declared: State, live: ReadonlyArray<PolicyIn
       declaredByTable.set(rec.table, names)
     }
     names.add(rec.name)
+    declaredRestrictiveByKey.set(`${rec.table}::${rec.name}`, rec.restrictive === true)
   }
 
-  // Index of live policies for the `missing` check.
-  const liveByKey = new Set(live.map((p) => `${p.table}::${p.policyName}`))
+  // Index of live policies for the `missing` check + restrictiveness lookup.
+  const liveByKey = new Map<string, PolicyInventoryRow>()
+  for (const p of live) liveByKey.set(`${p.table}::${p.policyName}`, p)
 
   const foreign: ForeignPolicy[] = []
   const staleManaged: StaleManagedPolicy[] = []
   const acknowledged: AcknowledgedPolicy[] = []
+  const restrictivenessMismatch: RestrictivenessMismatch[] = []
   for (const row of live) {
     if (!managedTables.has(row.table)) continue
-    if (declaredByTable.get(row.table)?.has(row.policyName)) continue // declared + owned
+    if (declaredByTable.get(row.table)?.has(row.policyName)) {
+      // Declared + owned: the only remaining drift signal is permissive ↔
+      // restrictive disagreement.
+      const declaredRestrictive = declaredRestrictiveByKey.get(`${row.table}::${row.policyName}`) ?? false
+      // pg_policies.permissive is `true` for permissive, `false` for restrictive.
+      const declaredPermissive = !declaredRestrictive
+      if (declaredPermissive !== row.permissive) {
+        restrictivenessMismatch.push(
+          Object.freeze({
+            table: row.table,
+            policyName: row.policyName,
+            declaredRestrictive,
+            livePermissive: row.permissive,
+          })
+        )
+      }
+      continue
+    }
     if (row.comment === GUARDDOG_POLICY_COMMENT) {
       staleManaged.push(Object.freeze({ table: row.table, policyName: row.policyName }))
     } else if (row.comment === GUARDDOG_IGNORE_COMMENT) {
@@ -120,8 +163,10 @@ export function computePolicyDrift(declared: State, live: ReadonlyArray<PolicyIn
     foreign: Object.freeze(foreign.toSorted(sortByTableName)),
     staleManaged: Object.freeze(staleManaged.toSorted(sortByTableName)),
     missing: Object.freeze(missing.toSorted(sortByTableName)),
+    restrictivenessMismatch: Object.freeze(restrictivenessMismatch.toSorted(sortByTableName)),
     acknowledged: Object.freeze(acknowledged.toSorted(sortByTableName)),
-    ok: foreign.length === 0 && staleManaged.length === 0 && missing.length === 0,
+    ok:
+      foreign.length === 0 && staleManaged.length === 0 && missing.length === 0 && restrictivenessMismatch.length === 0,
   })
 }
 

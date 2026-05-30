@@ -304,3 +304,45 @@ describe('emitPolicy — declared policy name (ADR-0031)', () => {
     expect(sql).toMatch(/CREATE POLICY override_for_insert ON workspace FOR INSERT/)
   })
 })
+
+describe('emitPolicy — restrictive policies (ADR-0032)', () => {
+  it('emits `AS RESTRICTIVE FOR ALL TO public` with the same USING + WITH CHECK', () => {
+    const guard = makeGuard()
+    guard.model('Workspace').isolation((p) => p.claim('tenantId').eq(col('tenantId')))
+    const sql = emitPolicy(guard.getPolicies()[0]!, ctx).join('\n')
+    expect(sql).toMatch(
+      /CREATE POLICY workspace_isolation ON workspace AS RESTRICTIVE FOR ALL TO public USING \(.+\) WITH CHECK \(.+\)/
+    )
+  })
+
+  it('drops + creates the restrictive under its declared name for atomic legacy replacement', () => {
+    const guard = makeGuard()
+    guard.model('Workspace').isolation((p) => p.literal(true), { name: 'tenant_isolation' })
+    const sql = emitPolicy(guard.getPolicies()[0]!, ctx)
+    expect(sql).toContain('DROP POLICY IF EXISTS tenant_isolation ON workspace;')
+    expect(sql.join('\n')).toMatch(
+      /CREATE POLICY tenant_isolation ON workspace AS RESTRICTIVE FOR ALL TO public USING \(TRUE\) WITH CHECK \(TRUE\);/
+    )
+  })
+
+  it('low-level .restrictivePolicy(role) emits `AS RESTRICTIVE FOR ALL TO <role>`', () => {
+    const guard = makeGuard()
+    guard
+      .model('Workspace')
+      .restrictivePolicy('app_user')
+      .forAll((p) => p.literal(true))
+    const sql = emitPolicy(guard.getPolicies()[0]!, ctx).join('\n')
+    expect(sql).toMatch(/CREATE POLICY workspace_app_user_all ON workspace AS RESTRICTIVE FOR ALL TO app_user/)
+  })
+
+  it('permissive policies still emit without `AS RESTRICTIVE`', () => {
+    const guard = makeGuard()
+    guard
+      .model('Workspace')
+      .policy('app_user')
+      .select((p) => p.literal(true))
+    const sql = emitPolicy(guard.getPolicies()[0]!, ctx).join('\n')
+    expect(sql).not.toMatch(/AS RESTRICTIVE/)
+    expect(sql).not.toMatch(/AS PERMISSIVE/)
+  })
+})

@@ -32,6 +32,7 @@
 
 import type { AppRolesDefinition } from './app-roles.js'
 import type {
+  AllSpec,
   ColumnPrivilegeAst,
   ColumnPrivilegeGrant,
   DeleteSpec,
@@ -104,6 +105,14 @@ export class Guarddog<
   readonly config: GuarddogConfig<TClaimsShape, TDbRoles, TAppRoles, TResources, TActions, TGrantTableKeys, TFunctions>
   private readonly _modelBuilders = new Map<string, ModelBuilder<TClaimsShape, TDbRoles, TGrantTableKeys, TFunctions>>()
   private readonly _policies = new Map<string, PolicyBuilder<TClaimsShape, TDbRoles, TGrantTableKeys, TFunctions>>()
+  // Restrictive policies (ADR-0032). Separate registry because the AST shape
+  // is `all`-spec only and the (model, dbRole) key space is independent of
+  // permissive policies — a model can have both an `app_user` permissive
+  // SELECT and a `public` restrictive isolation floor.
+  private readonly _restrictivePolicies = new Map<
+    string,
+    RestrictivePolicyBuilder<TClaimsShape, TDbRoles, TGrantTableKeys, TFunctions>
+  >()
   private readonly _noPolicies = new Map<string, NoPolicyAst>()
   private readonly _polymorphics = new Map<
     string,
@@ -213,6 +222,34 @@ export class Guarddog<
   }
 
   /**
+   * @internal — called by `ModelBuilder.restrictivePolicy()` (ADR-0032).
+   * Registry is keyed by `${model}::${dbRole}` so repeated declarations on
+   * the same `(model, dbRole)` are idempotent (same builder is returned).
+   */
+  _registerRestrictivePolicy(
+    key: string,
+    builder: RestrictivePolicyBuilder<TClaimsShape, TDbRoles, TGrantTableKeys, TFunctions>
+  ): void {
+    const existing = this._restrictivePolicies.get(key)
+    if (existing !== undefined && existing !== builder) {
+      throw new Error(
+        `[prisma-guarddog] Guarddog: refused to overwrite restrictive policy "${key}". This indicates a bug in the builder; report it.`
+      )
+    }
+    this._restrictivePolicies.set(key, builder)
+  }
+
+  /**
+   * @internal — used by `ModelBuilder.restrictivePolicy()` and `.isolation()`
+   * to enforce idempotence on the `(model, dbRole)` key.
+   */
+  _findRestrictivePolicy(
+    key: string
+  ): RestrictivePolicyBuilder<TClaimsShape, TDbRoles, TGrantTableKeys, TFunctions> | undefined {
+    return this._restrictivePolicies.get(key)
+  }
+
+  /**
    * Construct the predicate builder threaded with the registered claim shape,
    * grant-table keys, and function names. `TCols` (the active model's column
    * union) is supplied by the caller (the policy builder) so `p.col(...)`
@@ -237,11 +274,16 @@ export class Guarddog<
   }
 
   /**
-   * Deeply-frozen snapshot of every policy declared so far. Stable: insertion
-   * order across multiple calls. Emitter consumes this.
+   * Deeply-frozen snapshot of every policy declared so far — permissive (from
+   * `.policy()`) and restrictive (from `.restrictivePolicy()` / `.isolation()`,
+   * ADR-0032) combined. Insertion order: all permissive in their registration
+   * order, then all restrictive. Emitter consumes this.
    */
   getPolicies(): readonly PolicyAst[] {
-    return Object.freeze([...this._policies.values()].map((b) => b._toAst()))
+    return Object.freeze([
+      ...[...this._policies.values()].map((b) => b._toAst()),
+      ...[...this._restrictivePolicies.values()].map((b) => b._toAst()),
+    ])
   }
 
   /**
@@ -420,6 +462,68 @@ export class ModelBuilder<
       table: this._table,
       columns: Object.freeze(columns),
     })
+  }
+
+  /**
+   * Declare a restrictive policy for a specific Postgres role (ADR-0032). The
+   * `.forAll(fn)` predicate is AND'd with every permissive policy on this
+   * table — an inescapable floor. Repeated calls with the same `dbRole` return
+   * the same `RestrictivePolicyBuilder` (idempotent across files).
+   *
+   * Prefer `.isolation(fn)` for the canonical tenant + soft-delete floor; this
+   * primitive is the escape hatch for non-PUBLIC roles or distinct floors.
+   */
+  restrictivePolicy(
+    dbRole: TDbRoles | 'public'
+  ): RestrictivePolicyBuilder<TClaimsShape, TDbRoles, TGrantTableKeys, TFunctions, TColumns> {
+    if ((dbRole as string).length === 0) {
+      throw new Error('[prisma-guarddog] ModelBuilder.restrictivePolicy(): dbRole must be a non-empty string.')
+    }
+    const key = policyKey(this.modelName, dbRole as string)
+    const existing = this._guard._findRestrictivePolicy(key)
+    if (existing !== undefined) {
+      return existing as unknown as RestrictivePolicyBuilder<
+        TClaimsShape,
+        TDbRoles,
+        TGrantTableKeys,
+        TFunctions,
+        TColumns
+      >
+    }
+    const builder = new RestrictivePolicyBuilder<TClaimsShape, TDbRoles, TGrantTableKeys, TFunctions, TColumns>(
+      this._guard,
+      this.modelName,
+      dbRole as TDbRoles,
+      () => this._table
+    )
+    this._guard._registerRestrictivePolicy(
+      key,
+      builder as unknown as RestrictivePolicyBuilder<TClaimsShape, TDbRoles, TGrantTableKeys, TFunctions>
+    )
+    return builder
+  }
+
+  /**
+   * Domain-aware sugar for the tenant + soft-delete isolation floor
+   * (ADR-0032). Desugars to `.restrictivePolicy('public').forAll(fn)` with
+   * the auto-name `<table>_isolation`. Returns `this` (the ModelBuilder) so
+   * the chain can continue into permissive `.policy(role)` calls.
+   *
+   *   guard.model('Workspace').table('workspaces')
+   *     .isolation((p) => p.fn('current_tenant_id').eq(col('tenant_id'))
+   *       .and(p.col('deleted_at').isNull()))
+   *     .policy('app_user').select((p) => /* access only *\/)
+   *
+   * `opts.name` overrides the auto-name (useful for legacy-name parity, paired
+   * with ADR-0031). Repeated calls overwrite the predicate (the underlying
+   * RestrictivePolicyBuilder is the same instance across calls).
+   */
+  isolation(
+    fn: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys, TFunctions, TColumns>,
+    opts?: { readonly name?: string }
+  ): this {
+    this.restrictivePolicy('public')._markIsolation().forAll(fn, opts)
+    return this
   }
 
   /**
@@ -627,6 +731,118 @@ export class PolicyBuilder<
       insert: this._insert,
       update: this._update,
       delete: this._delete,
+      all: undefined,
+      todos: Object.freeze([...this._todos]),
+    })
+  }
+}
+
+/**
+ * Builder for a single restrictive policy (ADR-0032). One per `(model, dbRole)`
+ * — the registry enforces idempotence so `.restrictivePolicy('public')` twice
+ * on the same model returns the same builder.
+ *
+ * Restrictive policies declare exactly one predicate via `.forAll()`. That
+ * predicate is AND'd with every other policy on the table — the inescapable
+ * floor. The sister sugar `.isolation()` (on `ModelBuilder`) sets `_isolation`
+ * so the auto-name resolves to `<table>_isolation` instead of the generic
+ * `<table>_<role>_all`.
+ */
+export class RestrictivePolicyBuilder<
+  TClaimsShape extends ClaimsShape,
+  TDbRoles extends string,
+  TGrantTableKeys extends string = string,
+  TFunctions extends Record<string, FunctionDefinition> = Record<string, FunctionDefinition>,
+  TColumns extends string = string,
+> {
+  private _all: AllSpec | undefined
+  private _isolation = false
+  private _declaredName: string | undefined = undefined
+  private readonly _todos: string[] = []
+
+  constructor(
+    private readonly _guard: Guarddog<TClaimsShape, TDbRoles, string, string, string, TGrantTableKeys, TFunctions>,
+    readonly modelName: string,
+    readonly dbRole: TDbRoles,
+    private readonly _getTable: () => string | undefined
+  ) {}
+
+  /**
+   * Override the auto-generated policy name. Same semantics as
+   * `PolicyBuilder.named()` (ADR-0031): persists for the `.forAll(...)`
+   * declaration that follows. A per-call `{ name }` on `.forAll()` wins.
+   */
+  named(name: string | undefined): this {
+    if (name !== undefined && name.length === 0) {
+      throw new Error(
+        '[prisma-guarddog] RestrictivePolicyBuilder.named(): name must be a non-empty string or undefined.'
+      )
+    }
+    this._declaredName = name
+    return this
+  }
+
+  /**
+   * Declare the `FOR ALL` predicate (ADR-0032). The same predicate becomes
+   * both the `USING` and `WITH CHECK` of the emitted restrictive policy, so
+   * SELECT, INSERT, UPDATE, and DELETE all pass through it.
+   */
+  forAll(
+    fn: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys, TFunctions, TColumns>,
+    opts?: { readonly name?: string }
+  ): this {
+    const expr = freezeExprDeep(fn(this._guard._buildPredicate<TColumns>()).ast)
+    this._all = Object.freeze({ using: expr, check: expr, ...this._resolveNameField(opts?.name) })
+    return this
+  }
+
+  /**
+   * Attach a TODO marker to this restrictive policy. Same semantics as
+   * `PolicyBuilder.todo()`.
+   */
+  todo(message: string): this {
+    if (message.length === 0) {
+      throw new Error(
+        `[prisma-guarddog] RestrictivePolicyBuilder("${this.modelName}::${this.dbRole}").todo(): message must be a non-empty string.`
+      )
+    }
+    this._todos.push(message)
+    return this
+  }
+
+  /** @internal — marks this restrictive as authored via `.isolation()` so the lifecycle picks `<table>_isolation`. */
+  _markIsolation(): this {
+    this._isolation = true
+    return this
+  }
+
+  private _resolveNameField(perCall: string | undefined): { readonly name?: string } {
+    const name = perCall ?? this._declaredName
+    if (name === undefined) return {}
+    if (name.length === 0) {
+      throw new Error(
+        `[prisma-guarddog] RestrictivePolicyBuilder("${this.modelName}::${this.dbRole}"): policy name must be a non-empty string.`
+      )
+    }
+    return { name }
+  }
+
+  /**
+   * @internal — emit the immutable AST for this restrictive policy. Called by
+   * `Guarddog.getPolicies()`.
+   */
+  _toAst(): PolicyAst {
+    return Object.freeze({
+      model: this.modelName,
+      dbRole: this.dbRole,
+      table: this._getTable(),
+      select: undefined,
+      insert: undefined,
+      update: undefined,
+      delete: undefined,
+      all: this._all,
+      restrictive: true,
+      isolation: this._isolation,
       todos: Object.freeze([...this._todos]),
     })
   }

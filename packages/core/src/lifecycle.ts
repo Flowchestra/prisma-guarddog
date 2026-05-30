@@ -300,6 +300,26 @@ function appendPolicyOps(
   for (const pol of policies) {
     const table = pol.table ?? resolveTable(pol.model)
     let added = false
+    // Restrictive policy (ADR-0032): one `FOR ALL` spec; the `restrictive`
+    // flag flows into the Op so the renderer emits `AS RESTRICTIVE`. The
+    // `isolation` flag picks the `<table>_isolation` auto-name.
+    if (pol.all) {
+      out.push(
+        makeCreatePolicyOp(
+          pol.model,
+          table,
+          pol.dbRole,
+          'all',
+          pol.all.using,
+          pol.all.check,
+          pol.todos,
+          pol.all.name,
+          pol.restrictive === true,
+          pol.isolation === true
+        )
+      )
+      added = true
+    }
     if (pol.select) {
       out.push(
         makeCreatePolicyOp(
@@ -310,7 +330,9 @@ function appendPolicyOps(
           pol.select.using,
           undefined,
           pol.todos,
-          pol.select.name
+          pol.select.name,
+          false,
+          false
         )
       )
       added = true
@@ -325,7 +347,9 @@ function appendPolicyOps(
           undefined,
           pol.insert.check,
           pol.todos,
-          pol.insert.name
+          pol.insert.name,
+          false,
+          false
         )
       )
       added = true
@@ -340,7 +364,9 @@ function appendPolicyOps(
           pol.update.using,
           pol.update.check,
           pol.todos,
-          pol.update.name
+          pol.update.name,
+          false,
+          false
         )
       )
       added = true
@@ -355,7 +381,9 @@ function appendPolicyOps(
           pol.delete.using,
           undefined,
           pol.todos,
-          pol.delete.name
+          pol.delete.name,
+          false,
+          false
         )
       )
       added = true
@@ -536,9 +564,13 @@ function makeCreatePolicyOp(
   check: Expr | undefined,
   todos: ReadonlyArray<string>,
   // Optional user-declared override (ADR-0031). When undefined, auto-gen.
-  declaredName: string | undefined
+  declaredName: string | undefined,
+  // ADR-0032: restrictive (emits `AS RESTRICTIVE`) + isolation (picks the
+  // `<table>_isolation` auto-name).
+  restrictive: boolean,
+  isolation: boolean
 ): Op {
-  const name = declaredName ?? policyName({ table, dbRole, verb })
+  const name = declaredName ?? (isolation ? `${table}_isolation` : policyName({ table, dbRole, verb }))
   const policy: PolicyOpRecord = Object.freeze({
     name,
     model,
@@ -549,6 +581,7 @@ function makeCreatePolicyOp(
     check,
     todos: Object.freeze([...todos]),
     discriminator: undefined,
+    restrictive,
   })
   return { kind: 'create-policy', policy }
 }
@@ -578,6 +611,7 @@ function makePolymorphicPolicyOp(
     check,
     todos: Object.freeze([...todos]),
     discriminator: Object.freeze({ column: discriminatorColumn, value: discriminatorValue }),
+    restrictive: false,
   })
   return { kind: 'create-policy', policy }
 }
@@ -782,6 +816,9 @@ function policyRecordsEqual(a: PolicyOpRecord, b: PolicyOpRecord): boolean {
   if (a.table !== b.table) return false
   if (a.dbRole !== b.dbRole) return false
   if (a.verb !== b.verb) return false
+  // ADR-0032: a permissive ↔ restrictive flip on the same (table, name) is a
+  // semantic change — force drop+recreate so the catalog reflects it.
+  if ((a.restrictive === true) !== (b.restrictive === true)) return false
   if (!exprEqual(a.using, b.using)) return false
   if (!exprEqual(a.check, b.check)) return false
   if (a.todos.length !== b.todos.length) return false

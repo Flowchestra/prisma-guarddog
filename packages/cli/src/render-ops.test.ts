@@ -207,4 +207,18 @@ describe('renderOps()', () => {
     expect(createPolicy).toContain('USING (app.user_has_grant(id,')
     expect(createPolicy).toContain("'sub'))::uuid")
   })
+
+  it('renders restrictive policies with `AS RESTRICTIVE FOR ALL` (ADR-0032)', () => {
+    const guard = makeGuard()
+    guard.model('Workspace').isolation((p) => p.claim('tenantId').eq(col('tenantId')))
+    const sql = renderOps(compileToOps(guard), { claims: guard.config.claims })
+    const restrictive = sql.find((s) => s.includes('workspace_isolation') && s.startsWith('CREATE POLICY'))!
+    expect(restrictive).toMatch(
+      /CREATE POLICY workspace_isolation ON workspace AS RESTRICTIVE FOR ALL TO public USING \(.+\) WITH CHECK \(.+\);/
+    )
+    // The permissive policy on the same model stays permissive (no AS clause).
+    const permissive = sql.find((s) => s.includes('workspace_app_user_select') && s.startsWith('CREATE POLICY'))!
+    expect(permissive).not.toMatch(/AS RESTRICTIVE/)
+    expect(permissive).not.toMatch(/AS PERMISSIVE/)
+  })
 })

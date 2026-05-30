@@ -112,6 +112,59 @@ describe('computePolicyDrift', () => {
     expect(drift.foreign).toHaveLength(0)
   })
 
+  it('flags a permissive ↔ restrictive disagreement on a declared+owned policy (ADR-0032)', () => {
+    const guard = new Guarddog({
+      claims: defineClaims({ accessor: 'request.jwt.claims', shape: (c) => ({ sub: c.uuid(), tenantId: c.uuid() }) }),
+      dbRoles: defineDbRoles({ app_user: { inherits: [], nologin: true } }),
+      appRoles: defineAppRoles({}),
+      resources: defineResources({}),
+    })
+    // Declared restrictive isolation floor.
+    guard.model('Workspace').isolation((p) => p.claim('tenantId').eq(col('tenantId')))
+    const declared = compileToState(guard)
+    const live: PolicyInventoryRow[] = [
+      // Live still shows the policy as permissive — drift.
+      row({
+        table: 'workspace',
+        policyName: 'workspace_isolation',
+        comment: GUARDDOG_POLICY_COMMENT,
+        command: 'ALL',
+        permissive: true,
+      }),
+    ]
+    const drift = computePolicyDrift(declared, live)
+    expect(drift.restrictivenessMismatch).toHaveLength(1)
+    const m = drift.restrictivenessMismatch[0]!
+    expect(m.table).toBe('workspace')
+    expect(m.policyName).toBe('workspace_isolation')
+    expect(m.declaredRestrictive).toBe(true)
+    expect(m.livePermissive).toBe(true)
+    expect(drift.ok).toBe(false)
+  })
+
+  it('reports ok when declared restrictive matches live restrictive', () => {
+    const guard = new Guarddog({
+      claims: defineClaims({ accessor: 'request.jwt.claims', shape: (c) => ({ sub: c.uuid(), tenantId: c.uuid() }) }),
+      dbRoles: defineDbRoles({ app_user: { inherits: [], nologin: true } }),
+      appRoles: defineAppRoles({}),
+      resources: defineResources({}),
+    })
+    guard.model('Workspace').isolation((p) => p.claim('tenantId').eq(col('tenantId')))
+    const declared = compileToState(guard)
+    const live: PolicyInventoryRow[] = [
+      row({
+        table: 'workspace',
+        policyName: 'workspace_isolation',
+        comment: GUARDDOG_POLICY_COMMENT,
+        command: 'ALL',
+        permissive: false, // restrictive in pg_policies
+      }),
+    ]
+    const drift = computePolicyDrift(declared, live)
+    expect(drift.restrictivenessMismatch).toHaveLength(0)
+    expect(drift.ok).toBe(true)
+  })
+
   it('treats an :ignore-marked foreign policy as acknowledged (not foreign), keeping ok', () => {
     const declared = declaredState()
     const live: PolicyInventoryRow[] = [
