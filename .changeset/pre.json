@@ -24,6 +24,7 @@
     "feat-managed-sql-functions",
     "feat-prisma-config-discovery",
     "feat-rank-group-grants-and-cli-overrides",
+    "feat-restrictive-policy-support",
     "feat-table-backed-resource-grants",
     "feat-typed-model-and-column-refs",
     "feat-user-declared-policy-names",
