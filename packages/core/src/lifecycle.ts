@@ -315,7 +315,8 @@ function appendPolicyOps(
           pol.todos,
           pol.all.name,
           pol.restrictive === true,
-          pol.isolation === true
+          pol.isolation === true,
+          pol.slot
         )
       )
       added = true
@@ -332,7 +333,8 @@ function appendPolicyOps(
           pol.todos,
           pol.select.name,
           false,
-          false
+          false,
+          undefined
         )
       )
       added = true
@@ -349,7 +351,8 @@ function appendPolicyOps(
           pol.todos,
           pol.insert.name,
           false,
-          false
+          false,
+          undefined
         )
       )
       added = true
@@ -366,7 +369,8 @@ function appendPolicyOps(
           pol.todos,
           pol.update.name,
           false,
-          false
+          false,
+          undefined
         )
       )
       added = true
@@ -383,7 +387,8 @@ function appendPolicyOps(
           pol.todos,
           pol.delete.name,
           false,
-          false
+          false,
+          undefined
         )
       )
       added = true
@@ -568,9 +573,22 @@ function makeCreatePolicyOp(
   // ADR-0032: restrictive (emits `AS RESTRICTIVE`) + isolation (picks the
   // `<table>_isolation` auto-name).
   restrictive: boolean,
-  isolation: boolean
+  isolation: boolean,
+  // ADR-0033: optional named slot — when set to a non-default value, drives
+  // the auto-name (`<table>_<slot>` for isolation, `<table>_<role>_<slot>`
+  // for the low-level restrictive). Permissive policies pass undefined.
+  slot: string | undefined
 ): Op {
-  const name = declaredName ?? (isolation ? `${table}_isolation` : policyName({ table, dbRole, verb }))
+  const slotForName = slot !== undefined && slot !== 'default' ? slot : undefined
+  const name =
+    declaredName ??
+    (isolation
+      ? slotForName !== undefined
+        ? `${table}_${slotForName}`
+        : `${table}_isolation`
+      : slotForName !== undefined
+        ? `${table}_${dbRole}_${slotForName}`
+        : policyName({ table, dbRole, verb }))
   const policy: PolicyOpRecord = Object.freeze({
     name,
     model,

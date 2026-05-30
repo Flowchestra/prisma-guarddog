@@ -150,6 +150,16 @@ export interface PolicyAst {
    * effect on emitted SQL.
    */
   readonly isolation?: boolean
+  /**
+   * Optional slot key for restrictive policies (ADR-0033). Lets multiple
+   * restrictive invariants coexist on the same `(model, dbRole)` — e.g., a
+   * boundary slot AND a no-soft-deleted slot. Defaults to `'default'` (the
+   * alpha.14 singleton key). Drives the auto-name when set to a non-default
+   * value: `<table>_<slot>` for isolation, `<table>_<role>_<slot>` for the
+   * low-level restrictive primitive. Has no effect on emitted SQL beyond the
+   * resolved policy name.
+   */
+  readonly slot?: string
   readonly todos: ReadonlyArray<string>
 }
 

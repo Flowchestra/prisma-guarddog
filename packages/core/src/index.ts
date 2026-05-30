@@ -47,7 +47,13 @@ export type {
 export { defineSchema, materializeSchema } from './schema.js'
 export type { ColumnUnionMap, SchemaDefinition } from './schema.js'
 
-export { Guarddog, ModelBuilder, PolicyBuilder, RestrictivePolicyBuilder } from './guarddog.js'
+export {
+  DEFAULT_RESTRICTIVE_SLOT,
+  Guarddog,
+  ModelBuilder,
+  PolicyBuilder,
+  RestrictivePolicyBuilder,
+} from './guarddog.js'
 export type { GuarddogConfig } from './guarddog.js'
 
 export { PolymorphicBuilder, PolymorphicTargetBuilder, PolymorphicTargetPolicyBuilder } from './polymorphic.js'

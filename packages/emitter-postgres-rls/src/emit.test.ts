@@ -345,4 +345,21 @@ describe('emitPolicy — restrictive policies (ADR-0032)', () => {
     expect(sql).not.toMatch(/AS RESTRICTIVE/)
     expect(sql).not.toMatch(/AS PERMISSIVE/)
   })
+
+  it('isolation with a slot resolves to `<table>_<slot>` (ADR-0033)', () => {
+    const guard = makeGuard()
+    guard.model('Workspace').isolation('boundary', (p) => p.literal(true))
+    const sql = emitPolicy(guard.getPolicies()[0]!, ctx).join('\n')
+    expect(sql).toMatch(/CREATE POLICY workspace_boundary ON workspace AS RESTRICTIVE FOR ALL TO public/)
+  })
+
+  it('low-level restrictive with a slot resolves to `<table>_<role>_<slot>` (ADR-0033)', () => {
+    const guard = makeGuard()
+    guard
+      .model('Workspace')
+      .restrictivePolicy('app_user', 'boundary')
+      .forAll((p) => p.literal(true))
+    const sql = emitPolicy(guard.getPolicies()[0]!, ctx).join('\n')
+    expect(sql).toMatch(/CREATE POLICY workspace_app_user_boundary ON workspace AS RESTRICTIVE FOR ALL TO app_user/)
+  })
 })

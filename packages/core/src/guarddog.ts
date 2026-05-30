@@ -222,9 +222,10 @@ export class Guarddog<
   }
 
   /**
-   * @internal — called by `ModelBuilder.restrictivePolicy()` (ADR-0032).
-   * Registry is keyed by `${model}::${dbRole}` so repeated declarations on
-   * the same `(model, dbRole)` are idempotent (same builder is returned).
+   * @internal — called by `ModelBuilder.restrictivePolicy()` (ADR-0032 +
+   * ADR-0033). Registry is keyed by `${model}::${dbRole}::${slot}` so each
+   * named slot has its own builder; same slot returns the same builder
+   * (idempotent within a slot), different slots are independent.
    */
   _registerRestrictivePolicy(
     key: string,
@@ -241,7 +242,7 @@ export class Guarddog<
 
   /**
    * @internal — used by `ModelBuilder.restrictivePolicy()` and `.isolation()`
-   * to enforce idempotence on the `(model, dbRole)` key.
+   * to enforce idempotence on the `(model, dbRole, slot)` key (ADR-0033).
    */
   _findRestrictivePolicy(
     key: string
@@ -465,21 +466,38 @@ export class ModelBuilder<
   }
 
   /**
-   * Declare a restrictive policy for a specific Postgres role (ADR-0032). The
-   * `.forAll(fn)` predicate is AND'd with every permissive policy on this
-   * table — an inescapable floor. Repeated calls with the same `dbRole` return
-   * the same `RestrictivePolicyBuilder` (idempotent across files).
+   * Declare a restrictive policy for a specific Postgres role (ADR-0032 +
+   * ADR-0033). The `.forAll(fn)` predicate is AND'd with every permissive
+   * policy on this table — an inescapable floor.
    *
-   * Prefer `.isolation(fn)` for the canonical tenant + soft-delete floor; this
-   * primitive is the escape hatch for non-PUBLIC roles or distinct floors.
+   * `slot` (default `'default'`, ADR-0033) addresses multiple restrictive
+   * invariants on the same `(model, dbRole)`: each slot has its own
+   * `RestrictivePolicyBuilder`. Calls with the same `(dbRole, slot)` return
+   * the same builder (idempotent within a slot); different slots are
+   * independent.
+   *
+   * Auto-name when no `.named(...)` override is set:
+   *
+   *   - slot omitted / `'default'`  →  `<table>_<role>_all`  *(alpha.14 preserved)*
+   *   - slot provided               →  `<table>_<role>_<slot>`
+   *
+   * Prefer `.isolation(fn)` for the canonical tenant floor; this primitive
+   * is the escape hatch for non-PUBLIC roles or named-slot composition.
    */
   restrictivePolicy(
-    dbRole: TDbRoles | 'public'
+    dbRole: TDbRoles | 'public',
+    slot?: string
   ): RestrictivePolicyBuilder<TClaimsShape, TDbRoles, TGrantTableKeys, TFunctions, TColumns> {
     if ((dbRole as string).length === 0) {
       throw new Error('[prisma-guarddog] ModelBuilder.restrictivePolicy(): dbRole must be a non-empty string.')
     }
-    const key = policyKey(this.modelName, dbRole as string)
+    if (slot !== undefined && slot.length === 0) {
+      throw new Error(
+        '[prisma-guarddog] ModelBuilder.restrictivePolicy(): slot must be a non-empty string when provided.'
+      )
+    }
+    const resolvedSlot = slot ?? DEFAULT_RESTRICTIVE_SLOT
+    const key = restrictiveKey(this.modelName, dbRole as string, resolvedSlot)
     const existing = this._guard._findRestrictivePolicy(key)
     if (existing !== undefined) {
       return existing as unknown as RestrictivePolicyBuilder<
@@ -494,6 +512,7 @@ export class ModelBuilder<
       this._guard,
       this.modelName,
       dbRole as TDbRoles,
+      resolvedSlot,
       () => this._table
     )
     this._guard._registerRestrictivePolicy(
@@ -504,25 +523,49 @@ export class ModelBuilder<
   }
 
   /**
-   * Domain-aware sugar for the tenant + soft-delete isolation floor
-   * (ADR-0032). Desugars to `.restrictivePolicy('public').forAll(fn)` with
-   * the auto-name `<table>_isolation`. Returns `this` (the ModelBuilder) so
-   * the chain can continue into permissive `.policy(role)` calls.
+   * Domain-aware sugar for tenant + soft-delete isolation floors (ADR-0032 +
+   * ADR-0033). Desugars to `.restrictivePolicy('public', slot).forAll(fn)`
+   * with the auto-name `<table>_isolation` (no slot) or `<table>_<slot>`
+   * (when a slot is given). Returns `this` (the ModelBuilder) so the chain
+   * can continue into permissive `.policy(role)` calls.
    *
    *   guard.model('Workspace').table('workspaces')
-   *     .isolation((p) => p.fn('current_tenant_id').eq(col('tenant_id'))
-   *       .and(p.col('deleted_at').isNull()))
+   *     .isolation((p) => p.claim('tenantId').eq(col('tenant_id')))             // <table>_isolation
+   *     .isolation('no_soft_deleted', (p) => p.raw('deleted_at IS NULL'))       // <table>_no_soft_deleted
    *     .policy('app_user').select((p) => /* access only *\/)
    *
-   * `opts.name` overrides the auto-name (useful for legacy-name parity, paired
-   * with ADR-0031). Repeated calls overwrite the predicate (the underlying
-   * RestrictivePolicyBuilder is the same instance across calls).
+   * `opts.name` overrides the auto-name (legacy-name parity, ADR-0031).
+   * Repeated calls with the same slot overwrite the predicate (the underlying
+   * RestrictivePolicyBuilder is the same instance for that slot).
    */
   isolation(
     fn: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys, TFunctions, TColumns>,
     opts?: { readonly name?: string }
+  ): this
+  isolation(
+    slot: string,
+    fn: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys, TFunctions, TColumns>,
+    opts?: { readonly name?: string }
+  ): this
+  isolation(
+    slotOrFn: string | PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys, TFunctions, TColumns>,
+    fnOrOpts?:
+      | PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys, TFunctions, TColumns>
+      | { readonly name?: string },
+    maybeOpts?: { readonly name?: string }
   ): this {
-    this.restrictivePolicy('public')._markIsolation().forAll(fn, opts)
+    let slot: string | undefined
+    let fn: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys, TFunctions, TColumns>
+    let opts: { readonly name?: string } | undefined
+    if (typeof slotOrFn === 'string') {
+      slot = slotOrFn
+      fn = fnOrOpts as PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys, TFunctions, TColumns>
+      opts = maybeOpts
+    } else {
+      fn = slotOrFn
+      opts = fnOrOpts as { readonly name?: string } | undefined
+    }
+    this.restrictivePolicy('public', slot)._markIsolation().forAll(fn, opts)
     return this
   }
 
@@ -738,15 +781,16 @@ export class PolicyBuilder<
 }
 
 /**
- * Builder for a single restrictive policy (ADR-0032). One per `(model, dbRole)`
- * — the registry enforces idempotence so `.restrictivePolicy('public')` twice
- * on the same model returns the same builder.
+ * Builder for a single restrictive policy (ADR-0032 + ADR-0033). One per
+ * `(model, dbRole, slot)` — the registry enforces idempotence within a slot,
+ * so `.restrictivePolicy('public', 'boundary')` twice on the same model
+ * returns the same builder, while different slots get independent builders.
  *
  * Restrictive policies declare exactly one predicate via `.forAll()`. That
  * predicate is AND'd with every other policy on the table — the inescapable
  * floor. The sister sugar `.isolation()` (on `ModelBuilder`) sets `_isolation`
- * so the auto-name resolves to `<table>_isolation` instead of the generic
- * `<table>_<role>_all`.
+ * so the auto-name resolves to `<table>_isolation` (no slot) or
+ * `<table>_<slot>` (with slot) instead of the generic low-level form.
  */
 export class RestrictivePolicyBuilder<
   TClaimsShape extends ClaimsShape,
@@ -764,6 +808,7 @@ export class RestrictivePolicyBuilder<
     private readonly _guard: Guarddog<TClaimsShape, TDbRoles, string, string, string, TGrantTableKeys, TFunctions>,
     readonly modelName: string,
     readonly dbRole: TDbRoles,
+    readonly slot: string,
     private readonly _getTable: () => string | undefined
   ) {}
 
@@ -843,6 +888,7 @@ export class RestrictivePolicyBuilder<
       all: this._all,
       restrictive: true,
       isolation: this._isolation,
+      slot: this.slot,
       todos: Object.freeze([...this._todos]),
     })
   }
@@ -850,6 +896,16 @@ export class RestrictivePolicyBuilder<
 
 function policyKey(model: string, dbRole: string): string {
   return `${model}::${dbRole}`
+}
+
+/**
+ * Default slot key for restrictive policies (ADR-0033). Calls without an
+ * explicit slot hit this key, preserving the alpha.14 singleton behavior.
+ */
+export const DEFAULT_RESTRICTIVE_SLOT = 'default'
+
+function restrictiveKey(model: string, dbRole: string, slot: string): string {
+  return `${model}::${dbRole}::${slot}`
 }
 
 function mergeUnique<T extends string>(prior: ReadonlyArray<T> | undefined, next: ReadonlyArray<T> | undefined): T[] {

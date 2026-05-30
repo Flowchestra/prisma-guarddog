@@ -92,9 +92,17 @@ export function emitPolicy(policy: PolicyAst, ctx: EmitContext): readonly string
   // ADR-0032: restrictive policies declare a single `FOR ALL` spec; the
   // `<table>_isolation` auto-name applies when `.isolation()` set the flag.
   if (policy.all !== undefined) {
+    // ADR-0033: slot drives the auto-name when set to a non-default value.
+    const slotForName = policy.slot !== undefined && policy.slot !== 'default' ? policy.slot : undefined
     const name =
       policy.all.name ??
-      (policy.isolation === true ? `${table}_isolation` : policyName({ table, dbRole: policy.dbRole, verb: 'all' }))
+      (policy.isolation === true
+        ? slotForName !== undefined
+          ? `${table}_${slotForName}`
+          : `${table}_isolation`
+        : slotForName !== undefined
+          ? `${table}_${policy.dbRole}_${slotForName}`
+          : policyName({ table, dbRole: policy.dbRole, verb: 'all' }))
     out.push(
       ...emitCreatePolicy(name, table, dbRoleSql, 'ALL', policy.all.using, policy.all.check, exprCtx, { restrictive })
     )
