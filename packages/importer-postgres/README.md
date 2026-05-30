@@ -6,8 +6,9 @@ Read existing `pg_policies` and `information_schema.column_privileges` from a li
 
 ## What lives here
 
-- **`readPgPolicies(client, opts?)`** — query `pg_policies` for the configured schema and return normalized `ImportedPolicyRow[]`.
-- **`readColumnPrivileges(client, opts?)`** — query `information_schema.column_privileges` (filtered to SELECT/INSERT/UPDATE) and return `ImportedColumnPrivilege[]`.
+- **`readPgPolicies(client, opts?)`** — query `pg_policies` for the configured schema and return normalized `ImportedPolicyRow[]` (includes the policy SQL — `usingExpression`, `withCheckExpression` — for scaffold generation).
+- **`readPolicyInventory(client, opts?)`** — lighter-weight catalog inventory: one row per live policy with `permissive: boolean` and the `pg_description` comment. Consumed by `computePolicyDrift` in the CLI to classify foreign / managed / acknowledged ([ADR-0029](../../docs/adr/0029-handling-existing-rls-policies.md)).
+- **`readColumnPrivileges(client, opts?)`** — query `information_schema.column_privileges` (filtered to SELECT / INSERT / UPDATE) and return `ImportedColumnPrivilege[]`.
 - **`generateScaffold({ policies, columnPrivileges, modelMap?, banner? })`** — render a complete `.ts` module exporting an `importedPolicies(guard)` function.
 
 The reader accepts any `{ query(text, params): Promise<{rows}> }` shape — pass `pg.Client`, `pg.Pool`, `pg.PoolClient`, or a custom adapter. No hard dependency on the `pg` package.

@@ -2,9 +2,9 @@
 
 ## Start here
 
-- **[ARCHITECTURE.md](./ARCHITECTURE.md)** — system overview, package map, end-to-end compile path. Read this first.
-- **[PLAN.md](./PLAN.md)** — phased roadmap, Phase 1 status, non-goals.
-- **[GLOSSARY.md](./GLOSSARY.md)** — vocabulary (three permission layers, scope cascade, terminology discipline).
+- **[ARCHITECTURE.md](./ARCHITECTURE.md)** — system overview, package map, the greenfield compile path **and** the brownfield adoption path. Read this first.
+- **[PLAN.md](./PLAN.md)** — phased roadmap. Phase 1 + 1.5 complete; Phase 2 in progress.
+- **[GLOSSARY.md](./GLOSSARY.md)** — vocabulary (three permission layers, topology, adoption terms, restrictive policies).
 
 ## Per-package reference
 

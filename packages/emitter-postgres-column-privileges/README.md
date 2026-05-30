@@ -38,7 +38,12 @@ for (const ast of guard.getColumnPrivileges()) {
 
 `GRANT` and `REVOKE` are natively idempotent in Postgres — no wrapper needed.
 
+## Known gap — column-level GRANTs are not self-enforcing
+
+A column-level `GRANT` does **not** restrict access on its own: any pre-existing table-level `GRANT` (or a `PUBLIC` default) supersedes it. Until guarddog emits a base-table `REVOKE` prelude ([ADR-0027](../../docs/adr/0027-column-privilege-enforcement-gap.md), [issue #2](https://github.com/Flowchestra/prisma-guarddog/issues/2)), the consumer must withhold table-level privileges and grant only the allowed columns. The lint package raises `column-privilege-unenforced` to stop the gap from failing silently. The base-table REVOKE prelude lands in Phase 2.
+
 ## Where to read next
 
 - [`docs/adr/0004-column-privileges-vs-row-conditional-masking.md`](../../docs/adr/0004-column-privileges-vs-row-conditional-masking.md) — what this package does and does not cover
+- [`docs/adr/0027-column-privilege-enforcement-gap.md`](../../docs/adr/0027-column-privilege-enforcement-gap.md) — the enforcement gap and the planned fix
 - [`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) — fit with core's `ColumnPrivilegeAst` and the CLI's renderer

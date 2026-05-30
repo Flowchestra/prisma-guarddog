@@ -53,10 +53,14 @@ resource identified by `<scopeColumn>`?"
 
 Authored via `defineResourceGrants({ source, claimPath, actions })`. The
 `actions` array declares the vocabulary so `p.hasGrant('edit', col('id'))`
-type-checks against the declared set. Phase 1 supports `source: 'claims'` —
-grants encoded as a jsonb object on the session claims keyed by action name
-→ array of resource IDs. Phase 2 will add `source: 'table'` backed by a
-guarddog-emitted grants table.
+type-checks against the declared set. Two sources supported: `source:
+'claims'` (grants encoded as a jsonb object on the session claims keyed by
+action name → array of resource IDs), and `source: 'table'` (per-resource
+grant tables + polymorphic fallback, shipped in alpha.2 — see
+[ADR-0021](./adr/0021-table-backed-resource-grants.md)). Rank-based
+(`roleColumn` + `roleHierarchy`, [ADR-0022](./adr/0022-rank-based-grant-tables.md))
+and group-disjunctive (`groupMemberTable`, [ADR-0023](./adr/0023-grant-principal-disjunction.md))
+grant-table modes shipped in alpha.3.
 
 Referenced via `p.hasGrant(action, scopeColumnRef)`. Default compilation:
 
@@ -111,9 +115,36 @@ grant set).
 ### `policy`
 
 A Postgres RLS policy: a named rule attached to a table for a verb
-(`SELECT`/`INSERT`/`UPDATE`/`DELETE`) with `USING` and/or `WITH CHECK`
-predicates. Authored via `guard.model(X).policy(dbRole).select(...)` etc.
-USING and WITH CHECK are always explicit per [ADR-0005](./adr/0005-explicit-using-and-with-check.md).
+(`SELECT` / `INSERT` / `UPDATE` / `DELETE` / `ALL`) with `USING` and/or
+`WITH CHECK` predicates. Authored via `guard.model(X).policy(dbRole).select(...)`
+for permissive policies. USING and WITH CHECK are always explicit per
+[ADR-0005](./adr/0005-explicit-using-and-with-check.md).
+
+### `permissive` vs `restrictive`
+
+A policy's **kind**, governing how it composes with other policies on the
+same table. Postgres semantics:
+
+- **Permissive** policies are OR'd together across the `(table, command)` —
+  adding a permissive **widens** access. Every guarddog `.policy(...)` builder
+  emits permissive by default. Postgres omits the `AS PERMISSIVE` keyword
+  (it's the default), and so does guarddog's emit.
+- **Restrictive** policies are AND'd with every other policy on the table —
+  restrictive predicates are an **inescapable floor**. Future permissives
+  (break-glass, support tooling, shared-link) cannot widen around them.
+  Emitted as `AS RESTRICTIVE`. Authored via `.restrictivePolicy(role).forAll(fn)`
+  or the `.isolation(fn)` sugar. See
+  [ADR-0032](./adr/0032-restrictive-policy-support.md).
+
+### `isolation`
+
+The recommended shape for the tenant + soft-delete restrictive floor.
+`.isolation(fn)` desugars to `.restrictivePolicy('public').forAll(fn)` with
+the auto-name `<table>_isolation`. Applies to all commands (`FOR ALL`) and
+all roles (`TO public`). The conceptual model `(HARD floor) AND (SOFT
+access)` becomes structurally enforced — the floor is declared once per
+table, and every permissive on the table inherits the AND. Per
+[ADR-0032](./adr/0032-restrictive-policy-support.md).
 
 ### `predicate`
 
@@ -174,3 +205,76 @@ privileges from a live database and emits TS files with `rawSql()` +
 The importer **never** attempts to reverse-engineer business intent from
 SQL — SQL is evidence, not gospel (see
 [ADR-0012](./adr/0012-scaffold-only-importer.md)).
+
+## Adoption vocabulary
+
+The terms that make brownfield adoption legible — what guarddog sees in a
+live database, how it classifies what's there, and the dispositions an
+operator can pick per policy. Phase 1.5 ([ADR-0029](./adr/0029-handling-existing-rls-policies.md)
+through [ADR-0032](./adr/0032-restrictive-policy-support.md)).
+
+### `ownership comment`
+
+A `COMMENT ON POLICY` value guarddog stamps on every policy it emits
+(`prisma-guarddog:managed`), and that the `adopt` command stamps on
+operator-acknowledged foreigns (`prisma-guarddog:ignore`). The drift
+engine reads `pg_description` for these markers to distinguish
+guarddog-managed policies from a consumer's pre-existing ones,
+independent of the naming convention. The two markers are the durable,
+out-of-band identity for guarddog's policies — surviving renames, schema
+drift, or hand-edits in `pg_policies`.
+
+### `drift`
+
+The result of comparing guarddog's declared state against the live
+database, scoped to the tables guarddog manages (the ones it enables RLS
+on). Classifications, all keyed by `(table, policyName)`:
+
+- **foreign** — a live policy on a managed table that guarddog neither
+  declares nor marked. Permissive foreigns are wideners — the headline
+  risk. `guarddog drift` reports them with `--exit-code` to gate CI.
+- **staleManaged** — a `:managed`-stamped policy guarddog no longer
+  declares (a prior-run orphan; safe to drop).
+- **missing** — a policy guarddog declares that isn't in the live DB
+  (not applied yet, or drifted away).
+- **restrictivenessMismatch** — same `(table, name)` in both, but the
+  declared `restrictive` flag disagrees with `pg_policies.permissive`.
+  Treated as drift (forces a reapply) so the wrong kind doesn't ship
+  silently.
+- **acknowledged** — `:ignore`-stamped foreigns the operator kept via
+  `adopt`. Reported for transparency; not flagged as drift.
+
+### `adopt` / `disposition`
+
+`guarddog adopt --against <url>` walks every `foreign` policy and prompts
+for a per-policy **disposition**:
+
+- **keep** — stamp `:ignore` so drift acknowledges it. Use for
+  intentionally-out-of-scope policies (e.g., a Supabase auth policy you
+  don't want guarddog managing).
+- **remove** — emit `drop-policy` now. For policies you know are dead.
+- **edit** — scaffold `.rawSql(<legacy>) + .named(<legacy>) + .todo()` to
+  fold into `guarddog.ts`. Preserves the legacy SQL verbatim under the
+  legacy name; the `.todo()` reminds you to replace with a typed
+  predicate.
+- **override** — scaffold a fresh `.todo()` stub under the legacy name;
+  discards the legacy SQL. Use when the legacy is wrong but the name
+  must stay.
+- **skip** — leave alone; re-surface next run.
+
+Per [ADR-0030](./adr/0030-interactive-adoption-triage.md). Pairs with
+named-policy support so an `edit` scaffold can ship as an atomic in-place
+upgrade.
+
+### `declared name`
+
+An optional override of guarddog's auto-generated policy name. Set via
+`.named(name)` (chained, persists across subsequent verbs) or
+`{ name }` per-verb (local, wins over chained). When set, the emitter
+renders `DROP POLICY IF EXISTS <declared>; CREATE POLICY <declared> …`,
+swapping a typed replacement in **atomically** under a legacy name with
+no widening window. Lint warns on declared-name use to nudge authors
+back to the auto-gen convention (`<table>_<role>_<command>`) once
+adoption is complete — declared names are a transitional escape hatch,
+not an aesthetic preference. Per
+[ADR-0031](./adr/0031-user-declared-policy-names.md).

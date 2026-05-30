@@ -4,10 +4,10 @@ Pure AST → Postgres SQL transformer for RLS policies and role lifecycle. No I/
 
 ## What lives here
 
-- `emitPolicy(policyAst, ctx)` — `PolicyAst` → idempotent `DROP POLICY IF EXISTS … ; CREATE POLICY …` statements per declared verb.
-- `emitPolymorphic(polyAst, ctx)` — expands per-target with discriminator equality fused into the `USING`/`WITH CHECK` clauses.
-- `emitRoles(dbRoles)` — `CREATE ROLE` + `GRANT … TO …` wrapped in `pg_roles` / `pg_auth_members`-guarded DO blocks.
-- `compileExpr(expr, exprCtx)` — `Expr` tree → SQL fragment. The pluggable seams (`compileHasAppRole`, `compileHasGrant`, `compileHasResourcePermission`, `compileIsOwner`) let consumers swap the layer-2/3 lookup strategy without forking the emitter.
+- `emitPolicy(policyAst, ctx)` — `PolicyAst` → idempotent `DROP POLICY IF EXISTS … ; CREATE POLICY …` statements per declared verb. Restrictive policies (the `all` spec, [ADR-0032](../../docs/adr/0032-restrictive-policy-support.md)) emit as `AS RESTRICTIVE FOR ALL`. User-declared names ([ADR-0031](../../docs/adr/0031-user-declared-policy-names.md)) flow through both the DROP and CREATE for atomic in-place legacy upgrades.
+- `emitPolymorphic(polyAst, ctx)` — expands per-target with discriminator equality fused into the `USING` / `WITH CHECK` clauses.
+- `emitRoles(dbRoles)` — `CREATE ROLE` + `GRANT … TO …` wrapped in `pg_roles` / `pg_auth_members`-guarded `DO` blocks.
+- `compileExpr(expr, exprCtx)` — `Expr` tree → SQL fragment. The pluggable seams (`compileHasAppRole`, `compileHasGrant`, `compileHasResourcePermission`, `compileIsOwner`) let consumers swap the layer-2/3 lookup strategy without forking the emitter. `p.fn(...)` calls render against the configured `functionSchema` ([ADR-0026](../../docs/adr/0026-managed-sql-functions.md)).
 - `quoteIdent`, `quoteString`, `formatLiteral`, `defaultTableResolver`, `policyName` — dialect helpers; reused by the CLI's `renderOps`.
 
 ## Install
