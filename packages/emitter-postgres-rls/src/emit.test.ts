@@ -362,4 +362,45 @@ describe('emitPolicy — restrictive policies (ADR-0032)', () => {
     const sql = emitPolicy(guard.getPolicies()[0]!, ctx).join('\n')
     expect(sql).toMatch(/CREATE POLICY workspace_app_user_boundary ON workspace AS RESTRICTIVE FOR ALL TO app_user/)
   })
+
+  it('per-command `.forSelect` emits `AS RESTRICTIVE FOR SELECT ... USING (...)` (ADR-0034)', () => {
+    const guard = makeGuard()
+    guard
+      .model('Workspace')
+      .restrictivePolicy('public', 'no_soft_deleted')
+      .forSelect((p) => p.raw('deleted_at IS NULL'))
+    const sql = emitPolicy(guard.getPolicies()[0]!, ctx).join('\n')
+    expect(sql).toMatch(
+      /CREATE POLICY workspace_public_no_soft_deleted_select ON workspace AS RESTRICTIVE FOR SELECT TO public USING \(\(deleted_at IS NULL\)\);/
+    )
+    // SELECT has no WITH CHECK
+    expect(sql).not.toMatch(/WITH CHECK/)
+  })
+
+  it('per-command `.forInsert` emits `AS RESTRICTIVE FOR INSERT ... WITH CHECK (...)`', () => {
+    const guard = makeGuard()
+    guard
+      .model('Workspace')
+      .restrictivePolicy('public', 'tenant_writes')
+      .forInsert({ check: (p) => p.literal(true) })
+    const sql = emitPolicy(guard.getPolicies()[0]!, ctx).join('\n')
+    expect(sql).toMatch(
+      /CREATE POLICY workspace_public_tenant_writes_insert ON workspace AS RESTRICTIVE FOR INSERT TO public WITH CHECK \(TRUE\);/
+    )
+    expect(sql).not.toMatch(/FOR INSERT[^;]+USING/)
+  })
+
+  it('multiple per-verb methods on the same builder emit distinct CREATE POLICY statements', () => {
+    const guard = makeGuard()
+    guard
+      .model('Workspace')
+      .restrictivePolicy('public', 'writes')
+      .forInsert({ check: (p) => p.literal(true) })
+      .forUpdate({ using: (p) => p.literal(true), check: (p) => p.literal(true) })
+      .forDelete({ using: (p) => p.literal(true) })
+    const sql = emitPolicy(guard.getPolicies()[0]!, ctx).join('\n')
+    expect(sql).toMatch(/CREATE POLICY workspace_public_writes_insert ON workspace AS RESTRICTIVE FOR INSERT/)
+    expect(sql).toMatch(/CREATE POLICY workspace_public_writes_update ON workspace AS RESTRICTIVE FOR UPDATE/)
+    expect(sql).toMatch(/CREATE POLICY workspace_public_writes_delete ON workspace AS RESTRICTIVE FOR DELETE/)
+  })
 })

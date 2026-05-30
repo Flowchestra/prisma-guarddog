@@ -107,20 +107,26 @@ export function emitPolicy(policy: PolicyAst, ctx: EmitContext): readonly string
       ...emitCreatePolicy(name, table, dbRoleSql, 'ALL', policy.all.using, policy.all.check, exprCtx, { restrictive })
     )
   }
+  // ADR-0034: per-verb specs honor slot when present (`<table>_<role>_<slot>_<verb>`).
+  const perVerbSlot = policy.slot !== undefined && policy.slot !== 'default' ? policy.slot : undefined
+  const autoVerbName = (verb: 'select' | 'insert' | 'update' | 'delete'): string =>
+    perVerbSlot !== undefined
+      ? `${table}_${policy.dbRole}_${perVerbSlot}_${verb}`
+      : policyName({ table, dbRole: policy.dbRole, verb })
   if (policy.select !== undefined) {
-    const name = policy.select.name ?? policyName({ table, dbRole: policy.dbRole, verb: 'select' })
+    const name = policy.select.name ?? autoVerbName('select')
     out.push(
       ...emitCreatePolicy(name, table, dbRoleSql, 'SELECT', policy.select.using, undefined, exprCtx, { restrictive })
     )
   }
   if (policy.insert !== undefined) {
-    const name = policy.insert.name ?? policyName({ table, dbRole: policy.dbRole, verb: 'insert' })
+    const name = policy.insert.name ?? autoVerbName('insert')
     out.push(
       ...emitCreatePolicy(name, table, dbRoleSql, 'INSERT', undefined, policy.insert.check, exprCtx, { restrictive })
     )
   }
   if (policy.update !== undefined) {
-    const name = policy.update.name ?? policyName({ table, dbRole: policy.dbRole, verb: 'update' })
+    const name = policy.update.name ?? autoVerbName('update')
     out.push(
       ...emitCreatePolicy(name, table, dbRoleSql, 'UPDATE', policy.update.using, policy.update.check, exprCtx, {
         restrictive,
@@ -128,7 +134,7 @@ export function emitPolicy(policy: PolicyAst, ctx: EmitContext): readonly string
     )
   }
   if (policy.delete !== undefined) {
-    const name = policy.delete.name ?? policyName({ table, dbRole: policy.dbRole, verb: 'delete' })
+    const name = policy.delete.name ?? autoVerbName('delete')
     out.push(
       ...emitCreatePolicy(name, table, dbRoleSql, 'DELETE', policy.delete.using, undefined, exprCtx, { restrictive })
     )

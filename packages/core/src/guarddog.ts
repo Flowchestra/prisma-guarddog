@@ -800,6 +800,10 @@ export class RestrictivePolicyBuilder<
   TColumns extends string = string,
 > {
   private _all: AllSpec | undefined
+  private _select: SelectSpec | undefined
+  private _insert: InsertSpec | undefined
+  private _update: UpdateSpec | undefined
+  private _delete: DeleteSpec | undefined
   private _isolation = false
   private _declaredName: string | undefined = undefined
   private readonly _todos: string[] = []
@@ -831,14 +835,122 @@ export class RestrictivePolicyBuilder<
    * Declare the `FOR ALL` predicate (ADR-0032). The same predicate becomes
    * both the `USING` and `WITH CHECK` of the emitted restrictive policy, so
    * SELECT, INSERT, UPDATE, and DELETE all pass through it.
+   *
+   * Mutually exclusive with `.forSelect / forInsert / forUpdate / forDelete`
+   * on the same builder (ADR-0034). For command-asymmetric invariants (e.g.,
+   * SELECT-only soft-delete), use a per-verb method instead, or split across
+   * named slots ([ADR-0033](./0033-named-slots-for-restrictive-policies.md)).
    */
   forAll(
     fn: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys, TFunctions, TColumns>,
     opts?: { readonly name?: string }
   ): this {
+    this._assertVerbMutex('forAll')
     const expr = freezeExprDeep(fn(this._guard._buildPredicate<TColumns>()).ast)
     this._all = Object.freeze({ using: expr, check: expr, ...this._resolveNameField(opts?.name) })
     return this
+  }
+
+  /**
+   * Declare a `FOR SELECT`-only restrictive predicate (ADR-0034). Emits as
+   * `AS RESTRICTIVE FOR SELECT TO <role> USING (...)`. The canonical
+   * SELECT-only soft-delete shape: `forSelect(p => p.raw('deleted_at IS NULL'))`
+   * keeps undelete UPDATE / DELETE writes working.
+   *
+   * Mutually exclusive with `.forAll(...)` on the same builder.
+   */
+  forSelect(
+    fn: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys, TFunctions, TColumns>,
+    opts?: { readonly name?: string }
+  ): this {
+    this._assertVerbMutex('forSelect')
+    const using = freezeExprDeep(fn(this._guard._buildPredicate<TColumns>()).ast)
+    this._select = Object.freeze({ using, ...this._resolveNameField(opts?.name) })
+    return this
+  }
+
+  /**
+   * Declare a `FOR INSERT`-only restrictive predicate (ADR-0034). Emits
+   * `AS RESTRICTIVE FOR INSERT TO <role> WITH CHECK (...)`. INSERT has no
+   * `USING` per [ADR-0005](./0005-explicit-using-and-with-check.md).
+   *
+   * Mutually exclusive with `.forAll(...)` on the same builder.
+   */
+  forInsert(spec: {
+    check: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys, TFunctions, TColumns>
+    readonly name?: string
+  }): this {
+    this._assertVerbMutex('forInsert')
+    const check = freezeExprDeep(spec.check(this._guard._buildPredicate<TColumns>()).ast)
+    this._insert = Object.freeze({ check, ...this._resolveNameField(spec.name) })
+    return this
+  }
+
+  /**
+   * Declare a `FOR UPDATE`-only restrictive predicate (ADR-0034). Both
+   * `using` (eligibility) and `check` (post-update shape) are mandatory per
+   * [ADR-0005](./0005-explicit-using-and-with-check.md).
+   *
+   * Mutually exclusive with `.forAll(...)` on the same builder.
+   */
+  forUpdate(spec: {
+    using: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys, TFunctions, TColumns>
+    check: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys, TFunctions, TColumns>
+    readonly name?: string
+  }): this {
+    this._assertVerbMutex('forUpdate')
+    const p = this._guard._buildPredicate<TColumns>()
+    this._update = Object.freeze({
+      using: freezeExprDeep(spec.using(p).ast),
+      check: freezeExprDeep(spec.check(p).ast),
+      ...this._resolveNameField(spec.name),
+    })
+    return this
+  }
+
+  /**
+   * Declare a `FOR DELETE`-only restrictive predicate (ADR-0034). USING-only
+   * by Postgres semantics.
+   *
+   * Mutually exclusive with `.forAll(...)` on the same builder.
+   */
+  forDelete(spec: {
+    using: PredicateFn<InferClaims<ClaimsDefinition<TClaimsShape>>, TGrantTableKeys, TFunctions, TColumns>
+    readonly name?: string
+  }): this {
+    this._assertVerbMutex('forDelete')
+    const using = freezeExprDeep(spec.using(this._guard._buildPredicate<TColumns>()).ast)
+    this._delete = Object.freeze({ using, ...this._resolveNameField(spec.name) })
+    return this
+  }
+
+  /**
+   * Enforces ADR-0034's mutex rule: `.forAll(...)` and any per-verb method
+   * are catalog-distinct (`FOR ALL` vs `FOR <command>` in Postgres) and
+   * cannot coexist on one builder. To express both shapes on the same
+   * `(model, dbRole)`, declare them in distinct slots (ADR-0033).
+   */
+  private _assertVerbMutex(calling: 'forAll' | 'forSelect' | 'forInsert' | 'forUpdate' | 'forDelete'): void {
+    const hasAll = this._all !== undefined
+    const hasPerVerb =
+      this._select !== undefined ||
+      this._insert !== undefined ||
+      this._update !== undefined ||
+      this._delete !== undefined
+    if (calling === 'forAll' && hasPerVerb) {
+      throw new Error(
+        `[prisma-guarddog] RestrictivePolicyBuilder("${this.modelName}::${this.dbRole}::${this.slot}").forAll(): ` +
+          'cannot combine .forAll() with .forSelect / .forInsert / .forUpdate / .forDelete on the same builder ' +
+          '(catalog-distinct in Postgres). Use distinct slots (ADR-0033) to express both shapes.'
+      )
+    }
+    if (calling !== 'forAll' && hasAll) {
+      throw new Error(
+        `[prisma-guarddog] RestrictivePolicyBuilder("${this.modelName}::${this.dbRole}::${this.slot}").${calling}(): ` +
+          'cannot combine per-verb methods with .forAll() on the same builder ' +
+          '(catalog-distinct in Postgres). Use distinct slots (ADR-0033) to express both shapes.'
+      )
+    }
   }
 
   /**
@@ -874,17 +986,20 @@ export class RestrictivePolicyBuilder<
 
   /**
    * @internal — emit the immutable AST for this restrictive policy. Called by
-   * `Guarddog.getPolicies()`.
+   * `Guarddog.getPolicies()`. The AST carries either `all` (set by `.forAll`)
+   * or any subset of `select / insert / update / delete` (set by the
+   * per-verb methods, ADR-0034) — the mutex guard ensures these are never
+   * mixed.
    */
   _toAst(): PolicyAst {
     return Object.freeze({
       model: this.modelName,
       dbRole: this.dbRole,
       table: this._getTable(),
-      select: undefined,
-      insert: undefined,
-      update: undefined,
-      delete: undefined,
+      select: this._select,
+      insert: this._insert,
+      update: this._update,
+      delete: this._delete,
       all: this._all,
       restrictive: true,
       isolation: this._isolation,

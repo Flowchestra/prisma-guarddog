@@ -321,6 +321,13 @@ function appendPolicyOps(
       )
       added = true
     }
+    // ADR-0034: per-verb specs may belong to a permissive PolicyBuilder
+    // (`restrictive=false`) OR a per-command restrictive RestrictivePolicyBuilder
+    // (`restrictive=true`). The `pol.restrictive` flag and `pol.slot` flow
+    // through unchanged so per-verb restrictives emit `AS RESTRICTIVE FOR
+    // <verb>` and pick up slot-aware auto-names. Isolation is never set on
+    // per-verb (no `.isolation()` sugar for per-command — ADR-0034).
+    const verbRestrictive = pol.restrictive === true
     if (pol.select) {
       out.push(
         makeCreatePolicyOp(
@@ -332,9 +339,9 @@ function appendPolicyOps(
           undefined,
           pol.todos,
           pol.select.name,
+          verbRestrictive,
           false,
-          false,
-          undefined
+          pol.slot
         )
       )
       added = true
@@ -350,9 +357,9 @@ function appendPolicyOps(
           pol.insert.check,
           pol.todos,
           pol.insert.name,
+          verbRestrictive,
           false,
-          false,
-          undefined
+          pol.slot
         )
       )
       added = true
@@ -368,9 +375,9 @@ function appendPolicyOps(
           pol.update.check,
           pol.todos,
           pol.update.name,
+          verbRestrictive,
           false,
-          false,
-          undefined
+          pol.slot
         )
       )
       added = true
@@ -386,9 +393,9 @@ function appendPolicyOps(
           undefined,
           pol.todos,
           pol.delete.name,
+          verbRestrictive,
           false,
-          false,
-          undefined
+          pol.slot
         )
       )
       added = true
@@ -579,16 +586,22 @@ function makeCreatePolicyOp(
   // for the low-level restrictive). Permissive policies pass undefined.
   slot: string | undefined
 ): Op {
+  // ADR-0033 + ADR-0034: name resolution depends on (isolation, slot, verb).
+  // - declared name override always wins.
+  // - isolation (always verb='all'): `<table>_<slot>` (slot) | `<table>_isolation` (no slot).
+  // - non-isolation, verb='all': `<table>_<role>_<slot>` (slot) | `<table>_<role>_all` (no slot, == policyName).
+  // - non-isolation, per-verb: `<table>_<role>_<slot>_<verb>` (slot) | `<table>_<role>_<verb>` (no slot, == policyName).
   const slotForName = slot !== undefined && slot !== 'default' ? slot : undefined
-  const name =
-    declaredName ??
-    (isolation
-      ? slotForName !== undefined
-        ? `${table}_${slotForName}`
-        : `${table}_isolation`
-      : slotForName !== undefined
-        ? `${table}_${dbRole}_${slotForName}`
-        : policyName({ table, dbRole, verb }))
+  let name: string
+  if (declaredName !== undefined) {
+    name = declaredName
+  } else if (isolation) {
+    name = slotForName !== undefined ? `${table}_${slotForName}` : `${table}_isolation`
+  } else if (verb === 'all') {
+    name = slotForName !== undefined ? `${table}_${dbRole}_${slotForName}` : policyName({ table, dbRole, verb })
+  } else {
+    name = slotForName !== undefined ? `${table}_${dbRole}_${slotForName}_${verb}` : policyName({ table, dbRole, verb })
+  }
   const policy: PolicyOpRecord = Object.freeze({
     name,
     model,
