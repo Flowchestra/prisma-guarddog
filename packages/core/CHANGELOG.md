@@ -1,5 +1,152 @@
 # @flowchestra/prisma-guarddog-core
 
+## 0.1.0-alpha.15
+
+### Minor Changes
+
+- [`b4dc062`](https://github.com/Flowchestra/prisma-guarddog/commit/b4dc06288f988657dbeb99e21a8185ab9398a26c)
+  Thanks [@Henry-Steele](https://github.com/Henry-Steele)! - Add **per-command
+  restrictive policies** for issue #30 (ADR-0034). `RestrictivePolicyBuilder`
+  gains `.forSelect / .forInsert / .forUpdate / .forDelete` alongside the
+  existing `.forAll`, so a restrictive predicate can target only specific
+  commands instead of all four. The canonical archetype is a SELECT-only
+  soft-delete restrictive that filters reads against `deleted_at IS NULL`
+  without coupling that floor to write operations.
+
+  ```ts
+  guard.model('Workspace').table('workspaces')
+    // Uniform tenant floor — every command.
+    .isolation('boundary', (p) => p.claim('tenantId').eq(col('tenant_id')))
+    // SELECT-only soft-delete restrictive — emits as `AS RESTRICTIVE FOR SELECT`.
+    .restrictivePolicy('public', 'no_soft_deleted')
+      .forSelect((p) => p.raw('deleted_at IS NULL'))
+    // INSERT-only restrictive — blocks creating pre-soft-deleted rows.
+    .restrictivePolicy('public', 'no_pre_deleted')
+      .forInsert({ check: (p) => p.raw('deleted_at IS NULL') })
+    // Permissive access — the floors are already AND'd in.
+    .policy('app_user')
+      .select((p) => /* visibility OR FGAC */)
+  ```
+
+  API shape mirrors the existing permissive `PolicyBuilder` verb methods
+  exactly:
+  - `.forSelect(fn, opts?)` — USING-only, FOR SELECT
+  - `.forInsert({ check, name? })` — WITH CHECK only, FOR INSERT (no USING per
+    [ADR-0005](../docs/adr/0005-explicit-using-and-with-check.md))
+  - `.forUpdate({ using, check, name? })` — both, FOR UPDATE
+  - `.forDelete({ using, name? })` — USING-only, FOR DELETE
+  - `.forAll(fn, opts?)` — preserved; uniform predicate for all commands
+
+  **Mutex guard.** A single `RestrictivePolicyBuilder` holds either `.forAll` or
+  any subset of per-verb specs — never both. Mixing them on the same builder
+  throws at the second call with a clear error message ("catalog-distinct in
+  Postgres; use distinct slots to express both shapes"). To author both shapes
+  on the same `(model, dbRole)`, declare them under distinct slots
+  ([ADR-0033](../docs/adr/0033-named-slots-for-restrictive-policies.md)).
+
+  **Auto-name resolution.** Per-verb specs follow the existing convention:
+
+  | Form                                                  | Auto-name                      |
+  | ----------------------------------------------------- | ------------------------------ |
+  | `.forSelect(fn)` (default slot)                       | `<table>_<role>_select`        |
+  | `.forSelect(fn)` (with slot)                          | `<table>_<role>_<slot>_select` |
+  | Same shape for `.forInsert / .forUpdate / .forDelete` | (verb in the suffix)           |
+
+  `.named(name)` / per-call `{ name }` overrides continue to win over the
+  auto-name.
+
+  **Note on Postgres semantics.** SELECT policies — permissive _and_ restrictive
+  — also gate row-visibility for UPDATE / DELETE row-finding. That's a Postgres
+  behavior, not a guarddog one. A `forSelect` restrictive that hides
+  soft-deleted rows will therefore also prevent `UPDATE WHERE id = X` from
+  finding those rows by their ID. For undelete-style flows in practice, use a
+  BYPASSRLS role (`app_system`) or place the operation behind a SECURITY DEFINER
+  function ([ADR-0026](../docs/adr/0026-managed-sql-functions.md)).
+  - **core**: `RestrictivePolicyBuilder` gains
+    `_select / _insert / _update / _delete` internal fields and the four
+    per-verb methods; `_toAst()` returns them on the `PolicyAst` (alongside the
+    existing `all` for `.forAll`). The mutex guard runs on every call. No new
+    AST shapes — the per-verb specs reuse
+    `SelectSpec / InsertSpec / UpdateSpec / DeleteSpec`.
+  - **lifecycle**: `appendPolicyOps` already iterated per-verb specs; threads
+    `pol.restrictive` and `pol.slot` through the per-verb branches (previously
+    hardcoded `false / undefined`). The name-resolution rule extends to handle
+    the slot+verb combination as `<table>_<role>_<slot>_<verb>`.
+  - **emitter-postgres-rls**: per-verb name resolution honors the slot;
+    restrictive emission unchanged at the SQL-shape level (the existing
+    `AS RESTRICTIVE` clause was already threaded through every verb branch in
+    alpha.14).
+  - **drift**: no new code — `restrictivenessMismatch`
+    ([ADR-0032](../docs/adr/0032-restrictive-policy-support.md)) already catches
+    per-verb permissive ↔ restrictive flips by virtue of being keyed on
+    `(table, name)` regardless of the verb.
+
+  Pairs with
+  [ADR-0033](../docs/adr/0033-named-slots-for-restrictive-policies.md) — the
+  canonical multi-invariant shape is now `.isolation('boundary', fn)` (uniform
+  tenant floor) +
+  `.restrictivePolicy('public', 'no_soft_deleted').forSelect(...)` (SELECT-only
+  read floor) on the same model.
+
+- [`8032b2c`](https://github.com/Flowchestra/prisma-guarddog/commit/8032b2c87c88826f0a8666f57e653c57fe7fcb66)
+  Thanks [@Henry-Steele](https://github.com/Henry-Steele)! - Add **named slots
+  for restrictive policies** for issue #29 (ADR-0033). Multiple restrictive
+  invariants can now coexist on the same `(model, dbRole)` — e.g., a boundary
+  slot AND a no-soft-deleted slot — authored as **distinct
+  `.isolation(slot, fn)` calls** rather than one AND-combined predicate. Each
+  slot maps to its own `pg_policies` row with a meaningful name.
+
+  ```ts
+  guard.model('Workspace').table('workspaces')
+    // Two distinct invariants → two restrictive pg_policies rows.
+    .isolation('boundary', (p) =>
+      p.fn('current_tenant_id').eq(col('tenant_id')).and(
+        p.or(
+          col('org_id').eq(p.fn('current_org_id')),
+          p.fn('org_has_cross_org_access', col('org_id'), p.fn('current_org_id'), 'WORKSPACE', col('id'), null),
+        )
+      )
+    )
+    .isolation('no_soft_deleted', (p) => p.raw('deleted_at IS NULL'))
+    .policy('app_user').select((p) => /* access only — both floors AND'd */)
+
+  // Low-level slot form — same key shape.
+  guard.model('Widget').restrictivePolicy('public', 'boundary').forAll((p) => …)
+  guard.model('Widget').restrictivePolicy('public', 'no_soft_deleted').forAll((p) => …)
+  ```
+
+  Backward compatible — alpha.14 calls without a slot hit the default slot
+  (`'default'`) and resolve to the existing `<table>_isolation` /
+  `<table>_<role>_all` auto-names unchanged.
+
+  **Auto-name resolution** (when no `.named(...)` override is set):
+
+  | Form                                                 | Auto-name                                   |
+  | ---------------------------------------------------- | ------------------------------------------- |
+  | `.isolation(fn)` (default slot)                      | `<table>_isolation` _(alpha.14 preserved)_  |
+  | `.isolation('boundary', fn)`                         | `<table>_boundary`                          |
+  | `.restrictivePolicy(role).forAll(fn)` (default slot) | `<table>_<role>_all` _(alpha.14 preserved)_ |
+  | `.restrictivePolicy(role, 'boundary').forAll(fn)`    | `<table>_<role>_boundary`                   |
+  - **core**: `PolicyAst` gains `slot?: string`. `RestrictivePolicyBuilder`
+    constructor takes the slot and surfaces it via the readonly `slot` field.
+    `ModelBuilder.restrictivePolicy(role, slot?)` and overloaded
+    `ModelBuilder.isolation(slot?, fn, opts?)` accept an optional slot string.
+    Registry re-keys from `(model, dbRole)` to `(model, dbRole, slot)`; same
+    slot returns the same builder, different slots are independent. Lifecycle
+    threads `slot` into `makeCreatePolicyOp` for slot-aware auto-naming. The
+    existing compile-time duplicate-name guard
+    ([ADR-0031](../docs/adr/0031-user-declared-policy-names.md)) catches
+    collisions when two slots resolve to the same name.
+  - **emitter-postgres-rls**: AST emitter (`emitPolicy`) honors slot in the same
+    name-resolution rules as the lifecycle.
+  - **lint**: slots are structural (no nudge). The existing
+    `policy-uses-declared-name` warning still fires only on `.named()` /
+    per-verb `{ name }`.
+
+  Pairs with the upcoming ADR-0034 (per-command restrictive policies) — once a
+  restrictive can be `FOR SELECT`-only, the slot is the registry handle that
+  lets distinct invariants target different command sets.
+
 ## 0.1.0-alpha.14
 
 ### Minor Changes
