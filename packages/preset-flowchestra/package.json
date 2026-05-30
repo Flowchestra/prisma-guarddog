@@ -1,6 +1,6 @@
 {
   "name": "@flowchestra/prisma-guarddog-preset",
-  "version": "0.1.0-alpha.13",
+  "version": "0.1.0-alpha.14",
   "description": "Flowchestra preset for prisma-guarddog: createFlowchestraGuarddog with WorkOS claim shape and app_user/app_system role hierarchy",
   "license": "MIT",
   "repository": {
